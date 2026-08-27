@@ -3,13 +3,41 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="description" content="RocksCord - real-time chat, voice, and communities." />
     <title>RocksCord</title>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="theme-color" content="#08090d" />
+
+    <!--
+      Set the theme before the first paint.
+
+      React cannot do this: the bundle is fetched, parsed and mounted long after the
+      browser has already painted the background, so a light-mode user would get a
+      full-screen flash of near-black on every launch. Reading the one value synchronously
+      here costs a fraction of a millisecond and removes it entirely.
+
+      It duplicates a little logic from useSettingsStore, which is the accepted cost of
+      running before any module exists. Storage access is wrapped because a browser set to
+      block site data throws on access rather than returning null.
+    -->
+    <script>
+      (function () {
+        try {
+          var saved = JSON.parse(localStorage.getItem('rockscord.settings') || '{}');
+          var preference = (saved.state || {}).theme || 'dark';
+          var light =
+            preference === 'light' ||
+            (preference === 'system' &&
+              window.matchMedia('(prefers-color-scheme: light)').matches);
+          if (light) document.documentElement.setAttribute('data-theme', 'light');
+        } catch (error) {
+          /* No stored preference, or storage is unavailable: dark is the default. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -144,7 +144,13 @@ types become download cards. Content is sniffed from the file's bytes.
 plus user and channel search.
 
 **Voice** — peer-to-peer WebRTC audio, mute, deafen, real-time speaking detection from
-audio analysis, screen sharing, and per-peer volume.
+audio analysis, screen sharing, and per-peer volume. Microphone and output device are
+selectable with a live input meter, and echo cancellation, noise suppression, and automatic
+gain can each be toggled; changes apply to a call already in progress without rejoining.
+
+**Appearance** — dark and light themes, or follow the OS. The palette is one set of CSS
+custom properties, so the light theme re-points the same twenty tokens and every component
+follows without knowing a theme exists.
 
 **Notifications** — unread dots, mention badges, a notification tray, and OS notifications
 when the window is not focused.
@@ -632,8 +638,9 @@ tooling beyond kick/ban/audit log. Those are listed under
 - **No video calls** — screen sharing works, but there is no camera video.
 - **Message history is not virtualised.** 400 messages are kept in memory per channel;
   older ones are re-fetched on scroll. Fine in practice, but not a virtualised list.
-- **Light theme is not implemented.** The palette is entirely CSS custom properties in one
-  file, so it is a token swap rather than a rewrite — but it is not done.
+- **The desktop shell does not self-update.** UI and server changes arrive from the server
+  on next launch, but the Electron shell (splash, window behaviour, installer) is baked
+  into the exe and needs a new installer.
 - **Email verification is off.** The feature is complete and tested, but every free
   provider gates sending behind something — manual account approval, a domain you must
   own, or an SMTP port the host blocks — so nothing is enforced until one of them actually
@@ -651,7 +658,8 @@ Roughly in the order I would do them:
    verification are already in place, so this is largely a second route over the same parts.
 2. **Message virtualisation** — render only the visible window so a 50,000-message channel
    scrolls as smoothly as a new one.
-3. **Light theme** — the tokens are already isolated; this is mostly picking values.
+3. **Self-updating desktop shell** — `electron-updater` against GitHub Releases, so the
+   Electron half of the app stops needing a hand-delivered installer.
 4. **Read receipts and typing in the member list.**
 5. **Threads** — the schema's `reply_to_id` already forms a tree; this is a UI problem.
 6. **An SFU for large voice channels**, behind a feature flag, so the mesh stays the free

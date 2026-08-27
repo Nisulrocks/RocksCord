@@ -257,6 +257,31 @@ Needs two users. Use two private windows, or two desktop windows.
 - [ ] Stop sharing from the browser's own bar — the app updates
 - [ ] Disconnect — you disappear from the channel for everyone
 
+### Audio settings
+
+Settings → Voice. The first four need no second user.
+
+- [ ] Device names are hidden until you click **Show device names**, then appear
+- [ ] **Test microphone** — the meter moves when you speak, and the top segments turn amber
+      when you are close to clipping
+- [ ] Switch microphone mid-test — the meter restarts on the new device
+- [ ] Output volume and the processing toggles survive a full page reload
+- [ ] While in a call with B, change your microphone — **B keeps hearing you**, with no
+      disconnect and no gap
+- [ ] While in a call, toggle noise suppression — the call survives the microphone reopening
+- [ ] Drop output volume to 0 — B's voice goes silent while they stay connected
+- [ ] Where the browser has no `setSinkId` (Firefox), the output picker is disabled with an
+      explanation rather than silently doing nothing
+
+### Appearance
+
+- [ ] Settings → Appearance → **Light** — the whole app inverts immediately
+- [ ] Reload — it comes back light, with **no dark flash** before the first paint
+- [ ] **System** follows the OS setting; change the OS theme and the app follows live
+- [ ] In light mode, text stays readable everywhere: chat, sidebar, rail, modals, menus,
+      the member list, and the message composer
+- [ ] Scrollbars and form controls adopt the light scheme rather than staying dark
+
 ### Interface
 
 - [ ] Right-click a message, a channel, a server, a member — context menus appear

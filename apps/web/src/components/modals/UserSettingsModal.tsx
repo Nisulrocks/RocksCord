@@ -1,9 +1,13 @@
 /**
- * User settings: profile, account security, and appearance.
+ * User settings: profile, account security, appearance, and audio.
  *
  * The password form deliberately requires the current password even though the user is
  * already authenticated — an unattended session should not be enough to lock someone out
  * of their own account.
+ *
+ * Appearance and voice live in `./settings/` and read from `useSettingsStore` rather than
+ * the API: they are properties of the device, not the account. Both apply immediately,
+ * including to a call already in progress.
  */
 
 import { useRef, useState } from 'react';
@@ -15,9 +19,11 @@ import { api, ApiClientError } from '../../lib/api';
 import { setPresenceStatus } from '../../lib/socket';
 import { useAppStore } from '../../store/useAppStore';
 import { useUiStore } from '../../store/useUiStore';
+import { AppearanceTab } from './settings/AppearanceTab';
+import { VoiceTab } from './settings/VoiceTab';
 import { Modal } from '../ui/Modal';
 import { Avatar } from '../ui/Avatar';
-import { Button, Field, Input, Textarea, Toggle } from '../ui/primitives';
+import { Button, Field, Input, Textarea } from '../ui/primitives';
 
 type Tab = 'profile' | 'account' | 'appearance' | 'voice';
 
@@ -313,56 +319,3 @@ function AccountTab({ user }: { user: SelfUser }) {
 }
 
 /* -------------------------------------------------------------------------- */
-
-function AppearanceTab() {
-  const memberListOpen = useUiStore((s) => s.memberListOpen);
-  const toggleMemberList = useUiStore((s) => s.toggleMemberList);
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-line bg-surface-3 p-4">
-        <h4 className="text-[14px] font-semibold text-ink">Theme</h4>
-        <p className="mt-1 text-[13px] text-ink-dim">
-          RocksCord is dark-first by design. The whole palette is defined as CSS custom
-          properties in one file, so a light theme is a token swap rather than a rewrite —
-          it is on the roadmap rather than half-built here.
-        </p>
-      </div>
-
-      <Toggle
-        checked={memberListOpen}
-        onChange={toggleMemberList}
-        label="Show the member list"
-        description="Hide it to give the conversation more room."
-      />
-    </div>
-  );
-}
-
-function VoiceTab() {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-line bg-surface-3 p-4">
-        <h4 className="text-[14px] font-semibold text-ink">How voice works here</h4>
-        <p className="mt-1 text-[13px] leading-relaxed text-ink-dim">
-          Voice is peer-to-peer over WebRTC. Your audio goes straight to the other people in
-          the channel and never passes through the server — only the connection handshake
-          does. That is what makes voice free to run, and it means nobody (including the
-          server operator) is in a position to record the call.
-        </p>
-        <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">
-          Because every participant sends audio to every other participant, quality is best
-          up to about {LIMITS.VOICE_CHANNEL_SOFT_CAP} people in one channel.
-        </p>
-      </div>
-
-      <div className="rounded-lg border border-line bg-surface-3 p-4">
-        <h4 className="text-[14px] font-semibold text-ink">Microphone</h4>
-        <p className="mt-1 text-[13px] text-ink-dim">
-          Echo cancellation, noise suppression, and auto gain are enabled automatically. Your
-          browser controls which input device is used — change it in the site permissions.
-        </p>
-      </div>
-    </div>
-  );
-}

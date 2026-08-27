@@ -22,6 +22,7 @@ import type { SignalPayload } from '@rockscord/shared';
 import { api } from './api';
 import { emitVoiceSignal } from './socket';
 import { useVoiceStore } from '../store/useVoiceStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 interface PeerEntry {
   connection: RTCPeerConnection;
@@ -145,6 +146,7 @@ function createPeer(peerId: string, channelId: string): PeerEntry {
   const audio = new Audio();
   audio.autoplay = true;
   audio.srcObject = stream;
+  applyOutputSettings(audio);
 
   const entry: PeerEntry = { connection, stream, audio };
 
@@ -299,11 +301,7 @@ export async function startVoice(options: JoinVoiceOptions): Promise<void> {
 
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
+      audio: microphoneConstraints(),
       video: false,
     });
   } catch (error) {
@@ -346,6 +344,114 @@ export function stopVoice(): void {
 }
 
 /** Enable or disable the outgoing microphone track. */
+/**
+ * Build the `getUserMedia` audio constraints from the saved preferences.
+ *
+ * `deviceId` is an `ideal` rather than an `exact` constraint on purpose. A saved id goes
+ * stale the moment a headset is unplugged, and `exact` turns that into an
+ * `OverconstrainedError` -- failing to join voice at all because of a device that is no
+ * longer there. `ideal` falls back to the system default and lets the call connect.
+ */
+function microphoneConstraints(): MediaTrackConstraints {
+  const { inputDeviceId, echoCancellation, noiseSuppression, autoGainControl } =
+    useSettingsStore.getState();
+
+  return {
+    ...(inputDeviceId ? { deviceId: { ideal: inputDeviceId } } : {}),
+    echoCancellation,
+    noiseSuppression,
+    autoGainControl,
+  };
+}
+
+/**
+ * Route playback to a chosen output device.
+ *
+ * `setSinkId` is not in every browser's type definitions and is absent in Firefox, so it
+ * is feature-detected rather than assumed. An empty id means the system default.
+ */
+async function routeToOutput(audio: HTMLAudioElement, deviceId: string): Promise<void> {
+  const element = audio as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+  if (typeof element.setSinkId !== 'function') return;
+  try {
+    await element.setSinkId(deviceId);
+  } catch {
+    // The device may have been unplugged since it was chosen. Staying on the default is
+    // the right outcome, and is what the browser does anyway.
+  }
+}
+
+/** Apply the saved output device and volume to one freshly created element. */
+function applyOutputSettings(audio: HTMLAudioElement): void {
+  const { outputDeviceId, outputVolume } = useSettingsStore.getState();
+  audio.volume = outputVolume;
+  if (outputDeviceId) void routeToOutput(audio, outputDeviceId);
+}
+
+/**
+ * Switch microphone without dropping the call.
+ *
+ * `replaceTrack` swaps the outgoing track on each sender in place, so no renegotiation is
+ * needed and nobody hears a gap. Reconnecting instead would be far more disruptive than
+ * the change deserves.
+ */
+export async function setInputDevice(deviceId: string): Promise<void> {
+  if (!localStream) return;
+
+  const replacement = await navigator.mediaDevices.getUserMedia({
+    audio: { ...microphoneConstraints(), ...(deviceId ? { deviceId: { ideal: deviceId } } : {}) },
+    video: false,
+  });
+
+  const [track] = replacement.getAudioTracks();
+  if (!track) return;
+
+  // Carry over the mute state, or switching devices would silently unmute you.
+  const wasEnabled = localStream.getAudioTracks()[0]?.enabled ?? true;
+  track.enabled = wasEnabled;
+
+  for (const entry of peers.values()) {
+    const sender = entry.connection.getSenders().find((s) => s.track?.kind === 'audio');
+    if (sender) await sender.replaceTrack(track);
+  }
+
+  for (const old of localStream.getAudioTracks()) {
+    localStream.removeTrack(old);
+    old.stop();
+  }
+  localStream.addTrack(track);
+
+  stopLocalAnalyser?.();
+  stopLocalAnalyser = watchSpeaking(localStream, (speaking) =>
+    useVoiceStore.getState().setSpeaking(selfUserId ?? '', speaking),
+  );
+}
+
+/** Re-route every peer's audio to a different output device. */
+export async function setOutputDevice(deviceId: string): Promise<void> {
+  await Promise.all([...peers.values()].map((entry) => routeToOutput(entry.audio, deviceId)));
+}
+
+/** Master playback level for everyone else, 0..1. */
+export function setOutputVolume(volume: number): void {
+  const clamped = Math.max(0, Math.min(1, volume));
+  for (const entry of peers.values()) {
+    entry.audio.volume = clamped;
+  }
+}
+
+/**
+ * Re-open the microphone so changed processing options take effect.
+ *
+ * Echo cancellation and the rest are applied by the browser at capture time and cannot be
+ * toggled on a live track, so the only way to honour a change mid-call is a fresh capture
+ * and a `replaceTrack`.
+ */
+export async function reapplyAudioProcessing(): Promise<void> {
+  if (!localStream) return;
+  await setInputDevice(useSettingsStore.getState().inputDeviceId);
+}
+
 export function setMicrophoneEnabled(enabled: boolean): void {
   for (const track of localStream?.getAudioTracks() ?? []) {
     track.enabled = enabled;

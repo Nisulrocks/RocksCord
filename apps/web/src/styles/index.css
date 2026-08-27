@@ -7,6 +7,12 @@
  *
  * The identity is deliberately its own: a violet/teal accent pair over cool near-blacks,
  * rather than the blurple-on-grey that would just be a reskin of something else.
+ *
+ * Light mode is the promise in that first paragraph being kept. Every utility compiles to
+ * `var(--color-…)`, so the light theme below re-declares the same twenty-odd tokens under
+ * one attribute selector and the entire app follows -- no component knows a theme exists.
+ * `system` is resolved to a concrete value in JavaScript rather than with a media query,
+ * so there is exactly one source of truth for "which theme is on".
  */
 
 @import 'tailwindcss';
@@ -56,6 +62,58 @@
 }
 
 /* -------------------------------------------------------------------------- */
+/* Light theme                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The same tokens, re-pointed. Two things are not a straight inversion:
+ *
+ *  - The accent gets *darker* rather than lighter, because it has to carry white text on
+ *    buttons and hold 4.5:1 as link text against white. `accent-soft` is the hover state,
+ *    so on light it darkens where on dark it lightens; the token means "the hover one",
+ *    not "the lighter one".
+ *  - `surface-2` is the reading surface and becomes pure white, while the chrome around
+ *    it (rail, sidebar) tints *down* rather than up. Raised things then read as raised by
+ *    contrast with white plus a border, not by getting lighter still.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-surface-0: #dcdfea; /* server rail */
+  --color-surface-1: #e9ebf3; /* channel sidebar */
+  --color-surface-2: #ffffff; /* chat body */
+  --color-surface-3: #f1f3f9; /* raised: cards, hovered rows */
+  --color-surface-4: #ffffff; /* highest: menus, modals, inputs */
+
+  --color-line: #dbdfea;
+  --color-line-strong: #bcc3d4;
+
+  --color-ink: #14161f;
+  --color-ink-dim: #565d70;
+  --color-ink-faint: #838b9e;
+
+  --color-accent: #5b4bd6;
+  --color-accent-soft: #4a3ac2; /* hover: darker here, lighter in dark mode */
+  --color-accent-deep: #3d2fa6;
+  --color-accent-wash: #5b4bd614;
+  --color-teal: #16808f;
+
+  --color-online: #1c9b5c;
+  --color-idle: #b0741a;
+  --color-dnd: #d63a51;
+  --color-offline: #9aa1b3;
+
+  --color-danger: #d63a51;
+  --color-danger-deep: #b32f43;
+  --color-warning: #b0741a;
+  --color-mention: #f0b23224;
+
+  /* Near-black at low alpha; the dark theme's pure black would read as soot on white. */
+  --shadow-pop:
+    0 12px 32px -8px rgb(20 22 31 / 0.18), 0 2px 8px -2px rgb(20 22 31 / 0.1);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Base                                                                        */
 /* -------------------------------------------------------------------------- */
 
@@ -67,6 +125,12 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+/* Tells the browser which way its own widgets should go: scrollbars, form controls,
+   and the flash of background before the first paint. */
+:root {
+  color-scheme: dark;
 }
 
 body {
@@ -127,7 +191,8 @@ select {
   background-clip: content-box;
 }
 .scrollbar-slim::-webkit-scrollbar-thumb:hover {
-  background: #454c60;
+  /* Tokenised: a hard-coded grey here was the one thing that stayed dark in light mode. */
+  background: var(--color-ink-faint);
   background-clip: content-box;
 }
 
