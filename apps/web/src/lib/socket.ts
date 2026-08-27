@@ -194,8 +194,34 @@ export function sendTyping(channelId: string): void {
   socket?.emit('typing:start', { channelId });
 }
 
+/*
+ * The last status the *user* asked for, as opposed to one applied on their behalf.
+ *
+ * Auto-idle needs this to avoid two mistakes that would each be worse than not having the
+ * feature: idling someone out of "do not disturb", and restoring them to "online" when
+ * they had deliberately chosen to appear idle or invisible. `null` means the user has not
+ * chosen anything this session, so the value from the server stands.
+ */
+let chosenStatus: UserStatus | null = null;
+
+export function getChosenStatus(): UserStatus | null {
+  return chosenStatus;
+}
+
+/** Set the status because the user asked for it. */
 export function setPresenceStatus(status: UserStatus, customStatus?: string | null): void {
+  chosenStatus = status;
   socket?.emit('presence:set', { status, customStatus });
+}
+
+/**
+ * Set the status on the user's behalf, without disturbing what they chose.
+ *
+ * Kept separate from `setPresenceStatus` so that going idle at the keyboard cannot be
+ * mistaken later for a deliberate choice to appear idle.
+ */
+export function setAutoPresenceStatus(status: UserStatus): void {
+  socket?.emit('presence:set', { status });
 }
 
 export function ackRead(channelId: string, messageId: string): void {

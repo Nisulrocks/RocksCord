@@ -13,7 +13,7 @@
  * distinguishes an incoming request from an outgoing one.
  */
 
-import { and, eq, or } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { friendRequestSchema } from '@rockscord/shared';
 import { friendships, users } from '../db/schema.js';
@@ -103,7 +103,9 @@ export default async function friendRoutes(app: FastifyInstance): Promise<void> 
       const candidates = await db
         .select(publicUserColumns)
         .from(users)
-        .where(eq(users.usernameLower, usernameLower))
+        // A tombstoned account still holds a row so old messages render, but it is nobody
+        // you can befriend.
+        .where(and(eq(users.usernameLower, usernameLower), isNull(users.deletedAt)))
         .limit(20);
 
       const target = tagPart

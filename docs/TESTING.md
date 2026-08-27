@@ -169,6 +169,38 @@ REQUIRE_EMAIL_VERIFICATION=true npm start
 - [ ] Editing a character out of the link gives "that link is not valid"
 - [ ] Requesting a resend, then using the **older** link, is rejected
 
+### Quick switcher
+
+- [ ] `Ctrl`+`K` (or `Cmd`+`K`) opens it from anywhere, including while typing a message
+- [ ] It does **not** open the browser's address bar
+- [ ] Typing filters by fuzzy match — `gnrl` finds `general`
+- [ ] Typing a server name narrows to that server's channels
+- [ ] Arrow keys move the highlight; Enter jumps; Escape closes
+- [ ] Hovering a row moves the highlight, so mouse and keyboard do not fight
+- [ ] `Ctrl`+`K` again closes it
+
+### Auto-idle
+
+- [ ] Set yourself **Online**, leave the app untouched for five minutes — you go **Idle**
+- [ ] Move the mouse — you go back to **Online**
+- [ ] Set yourself **Do not disturb**, wait five minutes — you stay **Do not disturb**
+- [ ] Set yourself **Idle** by hand, then move the mouse — you stay **Idle**, because you
+      chose it
+- [ ] A second window signed in as the same account sees the change
+
+### Deleting an account
+
+Use a throwaway account.
+
+- [ ] Settings → Account → **Delete my account** asks for your password
+- [ ] A wrong password is refused and nothing happens
+- [ ] Owning a server that someone else has joined blocks it, and names the server
+- [ ] Owning a server nobody else joined is fine; that server is deleted with the account
+- [ ] After deleting: you land on the sign-in screen and cannot sign back in
+- [ ] Messages you sent still appear to others, attributed to **Deleted User**
+- [ ] The account no longer appears in user search or accepts friend requests
+- [ ] A second window still signed in as that account is kicked out
+
 ### Servers and channels
 
 - [ ] Create a server — it gets `#general`, a voice channel, and Admin/Moderator roles

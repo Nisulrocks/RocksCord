@@ -15,7 +15,7 @@
  * a channel they cannot open.
  */
 
-import { and, desc, eq, inArray, like, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { Permission, searchSchema } from '@rockscord/shared';
 import {
@@ -202,6 +202,9 @@ export default async function searchRoutes(app: FastifyInstance): Promise<void> 
 
     const conditions = [
       or(like(users.usernameLower, pattern), like(sql`lower(${users.displayName})`, pattern)),
+      // Deleted accounts keep their row for message attribution only; they are not people
+      // to be found.
+      isNull(users.deletedAt),
     ];
     if (tagPart) conditions.push(eq(users.discriminator, tagPart));
 

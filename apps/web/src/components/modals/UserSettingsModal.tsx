@@ -20,6 +20,7 @@ import { setPresenceStatus } from '../../lib/socket';
 import { useAppStore } from '../../store/useAppStore';
 import { useUiStore } from '../../store/useUiStore';
 import { AppearanceTab } from './settings/AppearanceTab';
+import { DeleteAccount } from './settings/DeleteAccount';
 import { VoiceTab } from './settings/VoiceTab';
 import { Modal } from '../ui/Modal';
 import { Avatar } from '../ui/Avatar';
@@ -331,6 +332,8 @@ function AccountTab({ user }: { user: SelfUser }) {
           Sign out of all devices
         </Button>
       </div>
+
+      <DeleteAccount />
     </div>
   );
 }

@@ -40,6 +40,17 @@ export const users = sqliteTable(
      * source of truth, so "verified but no date" cannot happen.
      */
     emailVerifiedAt: integer('email_verified_at'),
+    /**
+     * When the account was deleted, if it was.
+     *
+     * Deletion tombstones the row rather than removing it. `messages.author_id` and
+     * `servers.owner_id` both cascade, so a real DELETE would erase the person's messages
+     * -- tearing holes in conversations and orphaning every reply to them -- and destroy
+     * servers they owned along with everyone else's history inside. The row survives with
+     * its identifying fields scrubbed, so old messages still render as "Deleted User" and
+     * nobody else loses anything.
+     */
+    deletedAt: integer('deleted_at'),
     /** Lowercased copy of `username`, used for case-insensitive uniqueness and lookup. */
     usernameLower: text('username_lower').notNull(),
     username: text('username').notNull(),

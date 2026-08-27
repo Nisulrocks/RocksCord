@@ -63,6 +63,15 @@ export const resendVerificationSchema = z.object({
   email: emailSchema,
 });
 
+/**
+ * Deleting an account re-authenticates rather than trusting the session.
+ *
+ * It is the one action with no undo, so an unattended laptop should not be enough.
+ */
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, 'Enter your password').max(LIMITS.PASSWORD_MAX),
+});
+
 export const updateProfileSchema = z.object({
   displayName: z.string().trim().min(1).max(LIMITS.DISPLAY_NAME_MAX).optional(),
   bio: z.string().trim().max(LIMITS.BIO_MAX).nullable().optional(),
@@ -197,6 +206,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
 export type CreateServerInput = z.infer<typeof createServerSchema>;
 export type CreateChannelInput = z.infer<typeof createChannelSchema>;
 export type CreateMessageInput = z.infer<typeof createMessageSchema>;

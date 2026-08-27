@@ -1,8 +1,9 @@
 /**
  * User routes.
  *
- *   GET   /api/users/:userId          public profile
- *   PATCH /api/users/@me              update own profile
+ *   GET    /api/users/:userId          public profile
+ *   PATCH  /api/users/@me              update own profile
+ *   DELETE /api/users/@me              delete (tombstone) own account
  *   GET   /api/users/@me/read-states  unread + mention state for every channel
  *   PATCH /api/users/@me/channels/:channelId/mute  mute or unmute a channel
  *
@@ -10,18 +11,29 @@
  * you share, friends, and explicit username search -- not by enumerating the database.
  */
 
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { LIMITS, updateProfileSchema } from '@rockscord/shared';
+import { LIMITS, deleteAccountSchema, updateProfileSchema } from '@rockscord/shared';
 import {
   channels,
   dmParticipants,
+  emailVerifications,
+  friendships,
   memberRoles,
   members,
   messages,
+  notifications,
   readStates,
+  servers,
+  sessions,
   users,
 } from '../db/schema.js';
+import {
+  REFRESH_COOKIE_NAME,
+  clearedRefreshCookieOptions,
+  verifyPassword,
+} from '../lib/auth.js';
 import { ApiError, fromZodError } from '../lib/errors.js';
 import { publicUserColumns, toPublicUser, toSelfUser } from '../lib/serializers.js';
 import { sanitizeDisplayName } from '../lib/sanitize.js';
@@ -308,4 +320,140 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
 
     return { channels: rows };
   });
+
+  /* ---------------------------------------------------------------------- */
+  /* Account deletion                                                        */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Delete the signed-in account.
+   *
+   * The row is *tombstoned*, not removed. `messages.author_id` and `servers.owner_id`
+   * both cascade, so a real DELETE would erase every message the person ever sent --
+   * tearing holes in conversations and orphaning every reply to them -- and destroy any
+   * server they owned along with everyone else's history inside it. Deleting your account
+   * must not delete other people's.
+   *
+   * What actually happens: every identifying field is scrubbed and the credential is
+   * destroyed, so the account cannot be signed into or recognised, while old messages
+   * continue to render as "Deleted User".
+   *
+   * Servers they own are handled explicitly rather than silently. One with other members
+   * belongs to those members too, so the request is refused until ownership is
+   * transferred or the server is deleted deliberately.
+   */
+  app.delete(
+    '/@me',
+    {
+      preHandler: app.authenticate,
+      config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+    },
+    async (request, reply) => {
+      const parsed = deleteAccountSchema.safeParse(request.body);
+      if (!parsed.success) throw fromZodError(parsed.error);
+
+      const userId = request.user!.id;
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      if (!user || user.deletedAt !== null) throw ApiError.unauthorized();
+
+      /*
+       * Re-authenticate. An unattended session should not be enough to destroy an
+       * account -- this is the one action with no undo.
+       */
+      if (!(await verifyPassword(user.passwordHash, parsed.data.password))) {
+        throw ApiError.invalidCredentials('That password is not correct');
+      }
+
+      const owned = await db
+        .select({ id: servers.id, name: servers.name })
+        .from(servers)
+        .where(eq(servers.ownerId, userId));
+
+      if (owned.length > 0) {
+        const counts = await db
+          .select({ serverId: members.serverId, count: sql<number>`count(*)` })
+          .from(members)
+          .where(
+            inArray(
+              members.serverId,
+              owned.map((s) => s.id),
+            ),
+          )
+          .groupBy(members.serverId);
+
+        const memberCount = new Map(counts.map((row) => [row.serverId, Number(row.count)]));
+        const shared = owned.filter((server) => (memberCount.get(server.id) ?? 0) > 1);
+
+        if (shared.length > 0) {
+          throw new ApiError(
+            409,
+            'CONFLICT',
+            'Transfer or delete the servers you own first, so their members do not lose them.',
+            { servers: shared.map((server) => server.name) },
+          );
+        }
+
+        // Nobody else is in these, so removing them costs no one anything.
+        for (const server of owned) {
+          await db.delete(servers).where(eq(servers.id, server.id));
+        }
+      }
+
+      const now = Date.now();
+      /*
+       * A per-account suffix, because the scrubbed values still have to satisfy the
+       * unique indexes on email and on (username_lower, discriminator). `.invalid` is
+       * reserved by RFC 2606 and can never route anywhere.
+       */
+      const suffix = userId.slice(-10).toLowerCase();
+
+      await db
+        .update(users)
+        .set({
+          email: `deleted+${suffix}@invalid`,
+          emailVerifiedAt: null,
+          username: `deleted_${suffix}`,
+          usernameLower: `deleted_${suffix}`,
+          displayName: 'Deleted User',
+          // Not a hash of anything: no password can produce this, so the account cannot
+          // be signed into even if the tombstone is somehow reached.
+          passwordHash: `deleted:${randomBytes(32).toString('hex')}`,
+          avatarUrl: null,
+          bio: null,
+          customStatus: null,
+          status: 'offline',
+          deletedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(users.id, userId));
+
+      /*
+       * Rows that are purely this person's and carry no meaning for anyone else. DM
+       * participation is deliberately *not* removed: dropping it would make the
+       * conversation vanish for the other party, who is entitled to their own history.
+       */
+      await db.delete(sessions).where(eq(sessions.userId, userId));
+      await db.delete(emailVerifications).where(eq(emailVerifications.userId, userId));
+      await db.delete(readStates).where(eq(readStates.userId, userId));
+      await db.delete(notifications).where(eq(notifications.userId, userId));
+      await db.delete(members).where(eq(members.userId, userId));
+      await db
+        .delete(friendships)
+        .where(or(eq(friendships.requesterId, userId), eq(friendships.addresseeId, userId)));
+
+      request.log.info({ userId }, 'account deleted');
+
+      // Sever every live connection, or the socket would keep acting for a dead account.
+      const gateway = app.ctx.gateway;
+      if (gateway) {
+        for (const socketId of presence.getSocketIds(userId)) {
+          gateway.sockets.sockets.get(socketId)?.disconnect(true);
+        }
+      }
+
+      reply.clearCookie(REFRESH_COOKIE_NAME, clearedRefreshCookieOptions());
+      return reply.send({ ok: true });
+    },
+  );
 }

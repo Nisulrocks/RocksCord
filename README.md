@@ -148,6 +148,20 @@ audio analysis, screen sharing, and per-peer volume. Microphone and output devic
 selectable with a live input meter, and echo cancellation, noise suppression, and automatic
 gain can each be toggled; changes apply to a call already in progress without rejoining.
 
+**Keyboard** — `Ctrl`/`Cmd`+`K` opens a quick switcher that jumps to any channel, DM, or
+server by fuzzy name, with arrow keys and Enter. It matches against the server name too,
+so `btlng` finds `#general` in Beta Lounge.
+
+**Presence** — online, idle, do-not-disturb, and invisible, plus automatic idle after five
+minutes away. Auto-idle only ever acts on "online" and only reverses its own change, so a
+chosen status is never overridden.
+
+**Account deletion** — Settings → Account, confirmed with your password. The account is
+tombstoned rather than erased: profile, friendships, and memberships go, but messages stay
+as "Deleted User" so other people's conversations keep their shape and replies still
+resolve. Servers you own that others have joined block deletion until they are transferred
+or deleted deliberately.
+
 **Appearance** — dark and light themes, or follow the OS. The palette is one set of CSS
 custom properties, so the light theme re-points the same twenty tokens and every component
 follows without knowing a theme exists.

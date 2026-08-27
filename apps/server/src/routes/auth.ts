@@ -430,6 +430,13 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
         throw ApiError.invalidCredentials();
       }
 
+      /*
+       * A deleted account keeps its row so old messages still render, but it is not an
+       * account any more. Its stored hash cannot match any password, so this is belt and
+       * braces -- and it keeps the reason explicit rather than looking like a typo.
+       */
+      if (user.deletedAt !== null) throw ApiError.invalidCredentials();
+
       if (user.emailVerifiedAt === null && emailVerificationRequired()) {
         /*
          * Checked only after the password verifies, so this never becomes an oracle for

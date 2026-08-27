@@ -21,7 +21,7 @@ import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { LIMITS } from '@rockscord/shared';
 import { env, REPO_ROOT } from './env.js';
 import { createDb, pingDb, type Database, type DbHandle } from './db/index.js';
@@ -202,7 +202,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
     const claims = await verifyAccessToken(token);
     if (!claims) return null;
 
-    // The token is signed, but the account may have been deleted since it was issued.
+    /*
+     * The token is signed, but says nothing about the account still existing.
+     *
+     * `deletedAt IS NULL` is the load-bearing half. Deleting an account revokes its
+     * sessions, which stops *refresh* -- but an access token already in flight stays
+     * cryptographically valid until it expires, and the tombstoned row would still
+     * resolve. Without this check a deleted account keeps acting for up to fifteen
+     * minutes: posting, joining, reading. Caught by a test that deletes an account and
+     * then reuses its token.
+     */
     const [row] = await db
       .select({
         id: users.id,
@@ -212,7 +221,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
         email: users.email,
       })
       .from(users)
-      .where(eq(users.id, claims.sub))
+      .where(and(eq(users.id, claims.sub), isNull(users.deletedAt)))
       .limit(1);
 
     if (!row) return null;

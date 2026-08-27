@@ -16,7 +16,7 @@
  * `mobilePane`, so the same components serve both layouts.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { useAppStore } from '../store/useAppStore';
@@ -30,11 +30,37 @@ import { ChatView } from '../components/chat/ChatView';
 import { FriendsView } from '../components/home/FriendsView';
 import { VoiceRoom } from '../components/voice/VoiceRoom';
 import { ConnectionBanner } from '../components/layout/ConnectionBanner';
+import { QuickSwitcher } from '../components/modals/QuickSwitcher';
+import { useAutoIdle } from '../hooks/useAutoIdle';
 import { Spinner } from '../components/ui/primitives';
 
 export function AppShell({ onLogout }: { onLogout: () => Promise<void> }) {
   const params = useParams<{ serverId?: string; channelId?: string }>();
   const navigate = useNavigate();
+
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  // Idle after five minutes away, back on activity. Only ever touches "online".
+  useAutoIdle();
+
+  /*
+   * Ctrl/Cmd+K opens the quick switcher.
+   *
+   * Bound on the window rather than a container so it works wherever focus happens to
+   * be, including inside the composer. `preventDefault` matters: the browser's own
+   * Ctrl+K goes to the address bar, and losing focus to the URL bar mid-conversation is
+   * a worse outcome than not having the shortcut.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setSwitcherOpen((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const hydrated = useAppStore((s) => s.hydrated);
   const channels = useAppStore((s) => s.channels);
@@ -169,6 +195,8 @@ export function AppShell({ onLogout }: { onLogout: () => Promise<void> }) {
           <MemberList serverId={activeServerId} />
         </aside>
       )}
+
+      {switcherOpen && <QuickSwitcher onClose={() => setSwitcherOpen(false)} />}
     </div>
   );
 }
