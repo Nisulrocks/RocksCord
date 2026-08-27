@@ -155,8 +155,26 @@ function buildEnv(): Env {
   }
 
   if (!env.PUBLIC_URL) {
-    const host = env.HOST === '0.0.0.0' ? 'localhost' : env.HOST;
-    env.PUBLIC_URL = `http://${host}:${env.PORT}`;
+    /*
+     * Most hosts already publish the service's public address, so asking the operator to
+     * copy it into a second setting is a step that only exists to be forgotten. Getting
+     * it wrong is quietly bad: attachment and avatar URLs would be built against
+     * `localhost` and render as broken images for everyone.
+     */
+    const { RENDER_EXTERNAL_URL, RAILWAY_PUBLIC_DOMAIN, FLY_APP_NAME } = process.env;
+
+    if (RENDER_EXTERNAL_URL) {
+      // Render gives a full URL.
+      env.PUBLIC_URL = RENDER_EXTERNAL_URL;
+    } else if (RAILWAY_PUBLIC_DOMAIN) {
+      // Railway and Fly give a bare hostname, always served over HTTPS.
+      env.PUBLIC_URL = `https://${RAILWAY_PUBLIC_DOMAIN}`;
+    } else if (FLY_APP_NAME) {
+      env.PUBLIC_URL = `https://${FLY_APP_NAME}.fly.dev`;
+    } else {
+      const host = env.HOST === '0.0.0.0' ? 'localhost' : env.HOST;
+      env.PUBLIC_URL = `http://${host}:${env.PORT}`;
+    }
   }
   env.PUBLIC_URL = env.PUBLIC_URL.replace(/\/+$/, '');
 

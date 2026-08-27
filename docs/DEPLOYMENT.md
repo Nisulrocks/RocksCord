@@ -110,7 +110,6 @@ Free tier: 1 GB storage, 5 GB egress/month, no card.
    | `DATABASE_AUTH_TOKEN` | the Turso token |
    | `SUPABASE_URL` | your Supabase project URL, or blank |
    | `SUPABASE_SERVICE_KEY` | the `service_role` key, or blank |
-   | `PUBLIC_URL` | leave blank for now |
 
    If you filled in the Supabase keys, also change `STORAGE_DRIVER` to `supabase` in
    **Environment**. It defaults to `local` so a first deploy cannot fail on missing keys.
@@ -120,10 +119,13 @@ Free tier: 1 GB storage, 5 GB egress/month, no card.
 
 5. Click **Apply**. The first build takes 3–5 minutes.
 
-6. Once it is live, copy the URL (e.g. `https://rockscord.onrender.com`) and set it as
-   `PUBLIC_URL` in **Environment**, then redeploy. Attachment links are built from it.
+6. Once it is live, copy the URL (e.g. `https://rockscord.onrender.com`).
 
-   While you are there, tighten `CORS_ORIGIN` from `*` to that same URL.
+   You do **not** need to set `PUBLIC_URL`: the server reads Render's own
+   `RENDER_EXTERNAL_URL`, so attachment and avatar links resolve correctly on the first
+   deploy. Set it by hand only for a custom domain.
+
+   While you are there, you can tighten `CORS_ORIGIN` from `*` to that same URL.
 
 ### Not using the Blueprint
 

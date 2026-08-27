@@ -70,7 +70,6 @@ Free tier, no card, and WebSockets work on it.
    |---|---|
    | `DATABASE_URL` | your Turso URL |
    | `DATABASE_AUTH_TOKEN` | your Turso token |
-   | `PUBLIC_URL` | leave blank for now |
    | `SUPABASE_URL` | leave blank *(see the note below)* |
    | `SUPABASE_SERVICE_KEY` | leave blank |
 
@@ -80,10 +79,10 @@ Free tier, no card, and WebSockets work on it.
 4. Click **Apply**. The first build takes about 4 minutes.
 
 5. When it goes live, copy the URL at the top — something like
-   `https://rockscord.onrender.com`.
+   `https://rockscord.onrender.com`. That is the address your friends' app connects to.
 
-6. Go to **Environment** and set `PUBLIC_URL` to that URL. Save — it redeploys
-   automatically.
+   There is nothing else to configure: the server reads its own public address from
+   Render, so links to avatars and uploaded images work straight away.
 
 **Check it worked** — open `https://your-app.onrender.com/health` in a browser. You want:
 

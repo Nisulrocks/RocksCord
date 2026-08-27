@@ -83,10 +83,11 @@ services:
       - key: SUPABASE_BUCKET
         value: rockscord-uploads
 
-      # Set this to your Render URL after the first deploy, e.g.
-      # https://rockscord.onrender.com — attachment links are built from it.
-      - key: PUBLIC_URL
-        sync: false
+      # PUBLIC_URL is deliberately NOT listed here.
+      #
+      # Render exposes the service's address as RENDER_EXTERNAL_URL, and the server reads
+      # that automatically, so there is nothing to copy in after the first deploy. Set
+      # PUBLIC_URL manually only if you put the service behind a custom domain.
 
       # Lock this down to your own origin once you know the URL.
       - key: CORS_ORIGIN
