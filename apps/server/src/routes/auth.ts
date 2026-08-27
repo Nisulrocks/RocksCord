@@ -717,7 +717,14 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post(
     '/resend-verification',
-    { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } },
+    /*
+     * Deliberately looser than login. A request here is refused rather than acted on far
+     * more often than it is honoured -- the address may be unknown, already verified, or
+     * inside its cooldown -- and each of those still consumes a slot. Five was tight
+     * enough that ordinary troubleshooting exhausted it, which reads as the feature being
+     * broken. The 60-second cooldown, not this, is what actually bounds mail volume.
+     */
+    { config: { rateLimit: { max: 15, timeWindow: '15 minutes' } } },
     async (request, reply) => {
       const parsed = resendVerificationSchema.safeParse(request.body);
       if (!parsed.success) throw fromZodError(parsed.error);

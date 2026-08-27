@@ -12,6 +12,8 @@
 
 import { env } from '../../env.js';
 import { createBrevoDriver } from './brevo.js';
+import { createResendDriver } from './resend.js';
+import { createSmtpDriver } from './smtp.js';
 import {
   verificationHtml,
   verificationSubject,
@@ -62,23 +64,45 @@ export function getEmailDriver(): EmailDriver {
   if (override) return override;
   if (resolved) return resolved;
 
-  const configured =
-    env.EMAIL_DRIVER === 'auto'
-      ? env.EMAIL_API_KEY
-        ? 'brevo'
-        : 'console'
-      : env.EMAIL_DRIVER;
-
-  resolved =
-    configured === 'brevo'
-      ? createBrevoDriver({
-          apiKey: env.EMAIL_API_KEY,
-          fromEmail: env.EMAIL_FROM,
-          fromName: env.EMAIL_FROM_NAME,
-        })
-      : createConsoleDriver((line) => console.log(line));
-
+  resolved = createDriver(resolveDriverName());
   return resolved;
+}
+
+/**
+ * Work out which transport to use.
+ *
+ * `auto` reads the credentials rather than asking for the provider's name twice. SMTP
+ * wins when configured because it is the only option with no approval queue and no domain
+ * requirement, so an operator who has bothered to set it up wants it used. Between the two
+ * HTTP providers the key itself is unambiguous: Resend issues `re_...`, Brevo `xkeysib-...`.
+ */
+function resolveDriverName(): 'smtp' | 'brevo' | 'resend' | 'console' {
+  if (env.EMAIL_DRIVER !== 'auto') return env.EMAIL_DRIVER;
+  if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASSWORD) return 'smtp';
+  if (env.EMAIL_API_KEY.startsWith('re_')) return 'resend';
+  if (env.EMAIL_API_KEY) return 'brevo';
+  return 'console';
+}
+
+function createDriver(name: 'smtp' | 'brevo' | 'resend' | 'console'): EmailDriver {
+  const from = { fromEmail: env.EMAIL_FROM, fromName: env.EMAIL_FROM_NAME };
+
+  switch (name) {
+    case 'smtp':
+      return createSmtpDriver({
+        host: env.SMTP_HOST,
+        port: env.SMTP_PORT,
+        user: env.SMTP_USER,
+        password: env.SMTP_PASSWORD,
+        ...from,
+      });
+    case 'brevo':
+      return createBrevoDriver({ apiKey: env.EMAIL_API_KEY, ...from });
+    case 'resend':
+      return createResendDriver({ apiKey: env.EMAIL_API_KEY, ...from });
+    default:
+      return createConsoleDriver((line) => console.log(line));
+  }
 }
 
 /**

@@ -104,6 +104,27 @@ export function fromZodError(error: ZodError): ApiError {
   );
 }
 
+/** Human phrasing for a wait in seconds. */
+function describeWait(seconds: number): string {
+  if (seconds <= 90) return `${Math.max(1, Math.round(seconds))} seconds`;
+  const minutes = Math.round(seconds / 60);
+  return minutes === 1 ? 'a minute' : `${minutes} minutes`;
+}
+
+function rateLimitMessage(reply: FastifyReply): string {
+  const header = reply.getHeader('retry-after');
+  const raw = Number(Array.isArray(header) ? header[0] : header);
+  if (!Number.isFinite(raw) || raw <= 0) return 'You are doing that too fast. Slow down.';
+
+  /*
+   * Older releases of @fastify/rate-limit reported Retry-After in milliseconds rather
+   * than seconds, and the two are indistinguishable from the value alone. Anything above
+   * an hour is far outside every limit configured here, so it is the millisecond form.
+   */
+  const seconds = raw > 3600 ? raw / 1000 : raw;
+  return `Too many attempts. Try again in ${describeWait(seconds)}.`;
+}
+
 /**
  * Fastify's global error handler. Registered once in `app.ts` so that no route needs its
  * own try/catch just to produce a sane response body.
@@ -133,8 +154,14 @@ export function errorHandler(
   // @fastify/rate-limit and @fastify/multipart raise their own typed errors; translate
   // them into our vocabulary so clients only ever parse one error shape.
   if (fastifyError.statusCode === 429) {
+    /*
+     * Say how long, not just "slow down".
+     *
+     * Without a number this is indistinguishable from a permanent failure, and the honest
+     * reaction to it is to keep clicking -- which is the one thing that makes it worse.
+     */
     reply.status(429).send({
-      error: { code: 'RATE_LIMITED', message: 'You are doing that too fast. Slow down.' },
+      error: { code: 'RATE_LIMITED', message: rateLimitMessage(reply) },
     });
     return;
   }

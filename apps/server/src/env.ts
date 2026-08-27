@@ -113,18 +113,28 @@ const schema = z.object({
   /**
    * Which transport delivers verification mail.
    *
-   *   auto     pick `brevo` if BREVO_API_KEY is set, otherwise `console`
-   *   brevo    Brevo transactional API (free tier: 300 messages/day, no card)
+   *   auto     infer from whichever credentials are present (see below)
+   *   smtp     any SMTP relay, including Gmail. No domain, no approval queue
+   *   brevo    Brevo transactional API. Free, but new accounts need activating
+   *   resend   Resend API. Excellent, but needs a domain to email anyone but yourself
    *   console  print the link to the server log and send nothing
    *
    * `console` is what makes local development and the packaged desktop build work with
    * no account anywhere: the link is still generated, it just arrives in the log.
    */
-  EMAIL_DRIVER: z.enum(['auto', 'brevo', 'console']).default('auto'),
+  EMAIL_DRIVER: z.enum(['auto', 'smtp', 'brevo', 'resend', 'console']).default('auto'),
+
+  /** API key for the HTTP providers. Brevo keys start `xkeysib-`, Resend keys `re_`. */
   EMAIL_API_KEY: z.string().default(''),
-  /** Must be an address you have verified as a sender with the provider. */
+  /** Must be an address the provider will accept as a sender. */
   EMAIL_FROM: z.string().default(''),
   EMAIL_FROM_NAME: z.string().default('RocksCord'),
+
+  /* SMTP. For Gmail: smtp.gmail.com / 587, and an app password, not the login one. */
+  SMTP_HOST: z.string().default(''),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASSWORD: z.string().default(''),
 
   /**
    * Whether an unverified account may sign in.
@@ -212,14 +222,26 @@ function buildEnv(): Env {
   }
   env.PUBLIC_URL = env.PUBLIC_URL.replace(/\/+$/, '');
 
-  if (env.EMAIL_DRIVER === 'brevo' && !env.EMAIL_API_KEY) {
-    throw new Error('EMAIL_DRIVER=brevo requires EMAIL_API_KEY to be set.');
+  if ((env.EMAIL_DRIVER === 'brevo' || env.EMAIL_DRIVER === 'resend') && !env.EMAIL_API_KEY) {
+    throw new Error(`EMAIL_DRIVER=${env.EMAIL_DRIVER} requires EMAIL_API_KEY to be set.`);
   }
 
-  if (!env.EMAIL_FROM && env.EMAIL_API_KEY) {
+  if (env.EMAIL_DRIVER === 'smtp' && (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD)) {
     throw new Error(
-      'EMAIL_FROM is required when an email provider is configured. Use the address you ' +
-        'verified as a sender with the provider, e.g. EMAIL_FROM=you@gmail.com',
+      'EMAIL_DRIVER=smtp requires SMTP_HOST, SMTP_USER and SMTP_PASSWORD to be set.',
+    );
+  }
+
+  // An SMTP login is almost always the sending address, so default it rather than
+  // failing on a variable the operator has effectively already supplied.
+  if (!env.EMAIL_FROM && env.SMTP_USER.includes('@')) {
+    env.EMAIL_FROM = env.SMTP_USER;
+  }
+
+  if (!env.EMAIL_FROM && (env.EMAIL_API_KEY || env.SMTP_HOST)) {
+    throw new Error(
+      'EMAIL_FROM is required when an email provider is configured. Use the address the ' +
+        'provider accepts as a sender, e.g. EMAIL_FROM=you@gmail.com',
     );
   }
 

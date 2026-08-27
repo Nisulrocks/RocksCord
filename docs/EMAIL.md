@@ -1,9 +1,7 @@
 # Email verification
 
-RocksCord confirms email addresses before letting an account sign in. This page covers the
-one account you need to create, what it costs (nothing), and how to check it works.
-
-**Time: about 10 minutes. No credit card, no domain name.**
+RocksCord confirms email addresses before letting an account sign in. This page covers
+choosing a provider, setting it up, and what to do when mail does not arrive.
 
 ---
 
@@ -19,8 +17,7 @@ nothing to sign in with until the address is confirmed. Trying to sign in first 
 The app turns that into a "check your inbox" screen with a resend button, whether it was
 reached by registering or by signing in to an old unconfirmed account.
 
-Clicking the link confirms the address and shows a plain confirmation page. Links are
-single-use, expire after 24 hours, and are replaced whenever a new one is sent.
+Links are single-use, expire after 24 hours, and are replaced whenever a new one is sent.
 
 ---
 
@@ -29,7 +26,7 @@ single-use, expire after 24 hours, and are replaced whenever a new one is sent.
 **The app works with no email account at all.** Local development, the test suite, and the
 packaged desktop build all run unchanged.
 
-With nothing configured, the transport falls back to printing the link to the server log:
+With nothing configured, the transport prints the link to the server log:
 
 ```
 ------------------------------------------------------------------------
@@ -40,84 +37,134 @@ With nothing configured, the transport falls back to printing the link to the se
 ------------------------------------------------------------------------
 ```
 
-and verification is **not enforced** — registration signs you straight in, as it always
-did.
+and verification is **not enforced** — registration signs you straight in.
 
 That inference is deliberate. The desktop build runs its own server on the user's machine
 with no way to send anything, so requiring a click on a link that could never arrive would
-lock people out of their own computer. Set `REQUIRE_EMAIL_VERIFICATION=true` to demand it
-anyway (useful for testing the flow locally — you copy the link out of the terminal).
+lock people out of their own computer. `REQUIRE_EMAIL_VERIFICATION=true` demands it anyway,
+which is how to exercise the flow locally: you copy the link out of the terminal.
 
 ---
 
-## Why Brevo
+## Choosing a provider
 
-The requirement that eliminates almost everything: **sending to addresses you do not
-control, without owning a domain.** Your friends' addresses are not yours, and a domain
-costs money.
+One requirement eliminates most of the market: **sending to addresses you do not own,
+without owning a domain.** Your users' addresses are not yours, and a domain costs money.
 
-| Provider | Free tier | Sends to anyone? | Verdict |
-|---|---|---|---|
-| **Brevo** | 300/day, forever | Yes, after verifying one sender address | **Used here** |
-| Resend | 3,000/month | **No** — only your own address until you verify a domain | Unusable for this |
-| Mailgun | Trial, then paid | Sandbox mode is limited to 5 authorised recipients | Unusable for this |
-| SendGrid | 100/day | Yes | Workable, but signup screening rejects a lot of new accounts |
-| Gmail SMTP | 500/day | Yes | Works, but needs an app password and mixes with your personal mail |
+| Provider | Free allowance | Emails anyone? | Needs a domain? | Gatekeeping |
+|---|---|---|---|---|
+| **SMTP (Gmail)** | 500/day | Yes | No | None — works immediately |
+| **Brevo** | 300/day | Yes | No | New accounts held for manual approval |
+| **Resend** | 3,000/month | **No**, not without a domain | **Yes** | Instant, once a domain is verified |
 
-300 messages a day is roughly 300 new accounts a day. For a project shared with friends
-that limit will never be reached.
+**Start with SMTP.** It is the only one of the three with nothing standing between you and
+a delivered message, and Gmail's allowance is the largest. Move to Resend later if you buy
+a domain — it is the nicest of the three once that is true.
+
+### Why Resend cannot be the free default
+
+Until a domain is verified, a Resend account may only send from `onboarding@resend.dev`,
+and messages from that address are delivered **only to the address the Resend account was
+registered with**. It is a sandbox, not a starter tier.
+
+That failure is unusually nasty: your own test email arrives, so everything looks correct,
+and every message to an actual user vanishes. RocksCord's Resend driver detects that
+specific rejection and says so explicitly rather than letting it look like a bug here.
+
+If you own a domain, Resend is an excellent choice — verify it under **Domains**, set
+`EMAIL_FROM` to an address at that domain, and the restriction disappears.
+
+### Why Brevo may not work either
+
+Brevo holds new accounts before permitting any transactional send, and refuses everything
+until a human approves:
+
+```
+HTTP 403 — "Unable to send email. Your SMTP account is not yet activated.
+            Please contact us at contact@brevo.com to request activation"
+```
+
+Approval takes a day or so, and is sometimes declined without much explanation. If you are
+stuck there, switch to SMTP rather than waiting.
 
 ---
 
-## Setup
+## Setup: SMTP with Gmail (recommended)
 
-### 1. Create a Brevo account
+No domain, no approval queue, no third-party signup. About five minutes.
 
-Sign up at **[brevo.com](https://www.brevo.com)**. The free plan is the default; no card is
-requested.
+### 1. Turn on 2-Step Verification
 
-### 2. Verify a sender address
+App passwords do not exist without it: **[myaccount.google.com/security](https://myaccount.google.com/security)**
+→ **2-Step Verification**.
 
-**Senders, Domains & Dedicated IPs → Senders → Add a sender.**
+### 2. Create an app password
 
-Use an address you can open — your own Gmail is fine. Brevo emails it a confirmation link;
-click it. This is what lets you send without owning a domain, and it is the step people
-skip and then wonder why every send is rejected.
+**[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)** → name it
+`RocksCord` → **Create**.
 
-### 3. Create an API key
+You get 16 characters in four groups. Copy it — it is shown once. This is *not* your Google
+password, and it can be revoked on its own without touching your account.
 
-**SMTP & API → API Keys → Generate a new API key.**
+### 3. Set four variables
 
-Copy it now — it is shown once.
-
-### 4. Set two variables
-
-On **Render**: your service → **Environment** → add both, then save. Render restarts the
-service automatically; there is no redeploy to trigger.
+On **Render**: your service → **Environment** → add these, then save. The service restarts
+itself; there is no redeploy to trigger.
 
 ```
-EMAIL_API_KEY=xkeysib-...
-EMAIL_FROM=the-address-you-verified@gmail.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=the 16-character app password
 ```
 
-`EMAIL_FROM` **must** be the address from step 2. Anything else is rejected by Brevo.
+`EMAIL_FROM` defaults to `SMTP_USER`, so it can be left unset. Locally, put the same lines
+in `.env`.
 
-Locally, put the same two lines in `.env`.
+Verification switches itself on as soon as SMTP is configured.
 
-That is all. Verification switches itself on as soon as a key is present.
+> An existing `EMAIL_API_KEY` can stay or go — SMTP takes precedence when both are set.
 
-### 5. Check it
+### 4. Check it
 
 ```bash
-curl https://your-app.onrender.com/api/auth/config
+npm run test:email -- you@gmail.com
 ```
 
-```json
-{"allowRegistration":true,"requireEmailVerification":true, ...}
+Then:
+
+```bash
+curl.exe https://your-app.onrender.com/api/auth/config
 ```
 
-`requireEmailVerification: true` means the key was read and mail can be sent. Then register
-a throwaway account through the UI and confirm the email arrives.
+`"requireEmailVerification":true` means the server picked it up.
+
+---
+
+## Setup: Brevo
+
+1. Sign up at **[brevo.com](https://www.brevo.com)**.
+2. **[Senders](https://app.brevo.com/senders/list)** → **Add a sender**. Use an address you
+   can open. Brevo emails it a confirmation link — click it, or every send is refused.
+3. **[API keys](https://app.brevo.com/settings/keys/api)** → **Generate a new API key**.
+   Copy it; it is shown once.
+4. Set `EMAIL_API_KEY` and `EMAIL_FROM` on your host.
+
+If sends come back **403 not activated**, see [above](#why-brevo-may-not-work-either).
+
+---
+
+## Setup: Resend
+
+**Only worth doing if you own a domain.** See [above](#why-resend-cannot-be-the-free-default).
+
+1. Sign up at **[resend.com](https://resend.com)**.
+2. **Domains** → **Add Domain**, then add the DNS records it gives you at your registrar.
+3. **API Keys** → **Create API Key**. Resend keys start `re_`.
+4. Set `EMAIL_API_KEY` and an `EMAIL_FROM` at your verified domain, e.g.
+   `no-reply@yourdomain.com`.
+
+The driver is picked from the key prefix, so no `EMAIL_DRIVER` is needed.
 
 ---
 
@@ -125,108 +172,87 @@ a throwaway account through the UI and confirm the email arrives.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `EMAIL_API_KEY` | — | Brevo API key. Setting it turns verification on |
-| `EMAIL_FROM` | — | Sender address, verified with Brevo. Required alongside the key |
+| `EMAIL_DRIVER` | `auto` | `auto`, `smtp`, `brevo`, `resend`, `console` |
+| `SMTP_HOST` | — | e.g. `smtp.gmail.com`. Setting it selects SMTP |
+| `SMTP_PORT` | `587` | 587 for STARTTLS, 465 for implicit TLS. Never 25 |
+| `SMTP_USER` | — | The mailbox address |
+| `SMTP_PASSWORD` | — | App password, not the account password |
+| `EMAIL_API_KEY` | — | Brevo (`xkeysib-…`) or Resend (`re_…`) key |
+| `EMAIL_FROM` | `SMTP_USER` | Sender address the provider will accept |
 | `EMAIL_FROM_NAME` | `RocksCord` | Display name on the message |
-| `EMAIL_DRIVER` | `auto` | `auto`, `brevo`, or `console`. `auto` picks Brevo when a key is present |
 | `REQUIRE_EMAIL_VERIFICATION` | inferred | Overrides the inference in either direction |
 | `EMAIL_VERIFICATION_TTL_SECONDS` | `86400` | How long a link stays valid |
+
+`auto` reads the credentials: SMTP if a host is configured, then Resend if the key starts
+`re_`, then Brevo if any key is set, otherwise the console.
 
 ---
 
 ## Existing accounts
 
 The migration marks every account created before this feature as verified, using its
-original creation date.
+original creation date. They were made when no confirmation was asked for, so there is no
+address to re-confirm — and leaving them unverified would lock out everyone on a running
+deployment, including you, the moment it ran.
 
-They were made when no confirmation was ever asked for, so there is no address to
-re-confirm and no link they could be expected to still have. Leaving them unverified would
-lock out everyone on a running deployment — including you — the moment the migration ran.
-
-The same applies to the seeded demo accounts: they are created pre-verified, because their
-addresses are fictional and no link would ever arrive.
+Seeded demo accounts are created pre-verified, since their addresses are fictional.
 
 ---
 
 ## When mail does not arrive
 
-Run the diagnostic first. It sends through the provider with the same payload the server
-uses and prints the reply verbatim, which separates "RocksCord is not sending" from "the
-provider is refusing":
+Run the diagnostic first. It sends through whichever provider is configured, with the same
+payload the server uses, and prints the reply verbatim:
 
 ```bash
 npm run test:email -- you@example.com
 ```
 
-If `EMAIL_API_KEY` and `EMAIL_FROM` are not in your local `.env` (they normally live on
-the host, not your machine) it prompts for them. Nothing is stored.
+If nothing is configured locally it asks which provider to test and prompts for the
+details. Nothing is stored.
 
-A rejection names the cause. The one that catches almost everyone first:
+It maps each provider's common rejections to their one fix — a bad app password, an
+unconfirmed Brevo sender, Resend's sandbox, an account awaiting approval — so a failure
+names what to change rather than leaving you to search for it.
 
-**HTTP 403 `Your SMTP account is not yet activated`**
-
-Brevo holds new accounts before allowing any transactional send. Your key is fine, your
-sender is fine, and RocksCord is fine -- Brevo is simply refusing. Nothing reaches anyone
-until it is lifted.
-
-To unblock it: open the **Transactional** page in the Brevo dashboard and look for an
-activation prompt. If there is none, email **contact@brevo.com** and tell them what you are
-sending -- transactional account-verification emails for a small chat app, low volume is
-enough. Approval usually takes a few hours to a day.
-
-While you wait, set `REQUIRE_EMAIL_VERIFICATION=false` on your host. Registration then signs
-people in immediately, exactly as it did before this feature, so nobody is locked out.
-Remove the variable once Brevo approves you and verification comes straight back.
-
-The other two:
-
-- **HTTP 401 `Key not found`** — bad key, or a brand-new Brevo account still held for
-  review before it is allowed to send.
-- **anything mentioning the sender** — `EMAIL_FROM` is not an address that has been added
-  *and confirmed* under Brevo's Senders list. Adding it is not enough: Brevo emails that
-  address a link, and the sender stays unusable until someone clicks it.
-
-If it reports **Accepted** but nothing arrives, the configuration is fine and the problem
-is delivery — check **Brevo → Transactional → Logs** for a bounce or a block.
+If it reports **Accepted** and nothing arrives, the configuration is fine and the problem
+is delivery: check the provider's own sending log for a bounce or a block.
 
 ---
 
 ## Troubleshooting
 
-**`requireEmailVerification` is still `false`**
-The key is not reaching the process. On Render, confirm the variable is on the service
-itself (not a linked environment group) and that the restart finished.
+**`requireEmailVerification` is `false`**
+No provider was detected. Confirm the variables are on the service itself (not a linked
+environment group) and that the restart finished.
 
 **The service will not start: "EMAIL_FROM is required"**
-A key is set but no sender address. Set both, or neither.
+A provider is configured but no sender address, and none could be inferred. Set
+`EMAIL_FROM`, or set `SMTP_USER` to an address.
 
-**Logs show `Brevo rejected the message (HTTP 400): ... sender not valid`**
-`EMAIL_FROM` is not the address you verified in step 2, or you never clicked Brevo's own
-confirmation link.
+**"Invalid login: 535 … BadCredentials" from Gmail**
+An ordinary account password was used. Generate an app password (step 2 above); it needs
+2-Step Verification switched on first.
 
 **Nothing arrives, and nothing appears in the logs**
-Check the register response. It carries `emailSent`: `false` means the provider refused the
-message, and the app says so on screen rather than telling you to check your spam folder.
-A send failure never fails the registration itself — the account is real, and the resend
-button will retry it — but the provider's own explanation is in the server log, and
-`npm run test:email` will reproduce it.
+The register response carries `emailSent`. `false` means the provider refused, and the app
+says so on screen rather than sending you to your spam folder. A send failure never fails
+the registration itself — the account is real, and resending will retry.
+
+**"Too many attempts. Try again in …"**
+Resending is limited to 15 attempts per 15 minutes, on top of a 60-second cooldown between
+actual sends. The message says how long to wait.
 
 **It lands in spam**
 Expected for a new sender with no domain reputation, especially the first message to a
-given provider. The app's own screen tells people to check spam. Marking it "not spam" once
-usually fixes it for that recipient. Owning a domain and setting up SPF/DKIM is the real
-fix, and it is not free.
+given provider. Marking it "not spam" once usually fixes it for that recipient. Sending
+through Gmail's SMTP rather than a cold provider account helps considerably, because the
+mail leaves an established relay.
 
-**A friend clicked the link and got "already used"**
-Some mail providers pre-fetch links to scan them. If the account ended up verified, the
-page reports success rather than an error, so this is usually invisible. A genuine
-"already used" means the link was replaced by a newer one — use the most recent email.
-
-**Testing the whole flow locally**
+**Testing the whole flow with no provider**
 
 ```bash
 REQUIRE_EMAIL_VERIFICATION=true npm start
 ```
 
-Register, copy the link out of the terminal, paste it into a browser, then sign in. No
-provider needed.
+Register, copy the link out of the terminal, paste it into a browser, then sign in.

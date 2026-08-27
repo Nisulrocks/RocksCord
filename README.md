@@ -346,8 +346,9 @@ these are the ones that matter.
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS |
 | `CORS_ORIGIN` | `*` | Comma-separated allowed origins |
 | `ALLOW_REGISTRATION` | `true` | Set `false` to close signups |
-| `EMAIL_API_KEY` | — | Brevo API key. Setting it turns email verification on |
-| `EMAIL_FROM` | — | Sender address, verified with the provider. Required alongside the key |
+| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` | — | Any SMTP relay. Setting these turns email verification on |
+| `EMAIL_API_KEY` | — | Alternative to SMTP: a Brevo (`xkeysib-…`) or Resend (`re_…`) key |
+| `EMAIL_FROM` | `SMTP_USER` | Sender address the provider will accept |
 | `REQUIRE_EMAIL_VERIFICATION` | inferred | Follows whether mail can be delivered; set to override |
 | `TURN_URL` | — | Optional TURN relay for restrictive networks |
 
@@ -579,12 +580,20 @@ confirmed there is nothing to sign in with, and `/api/auth/login` answers `403
 EMAIL_NOT_VERIFIED` — checked *after* the password, so it cannot be used to discover which
 addresses are registered.
 
-Configure a provider and it switches itself on:
+Configure a provider and it switches itself on. SMTP through an ordinary mailbox is the
+recommended one, because it is the only free option with no domain requirement and no
+approval queue:
 
 ```bash
-EMAIL_API_KEY=your-brevo-key
-EMAIL_FROM=the-address-you-verified@example.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=your-16-character-app-password
 ```
+
+Brevo and Resend are also supported via `EMAIL_API_KEY`; the driver is chosen from the key
+prefix. Both have a catch worth reading about first — Brevo holds new accounts for manual
+approval, and Resend without a verified domain delivers only to its own owner.
 
 With no provider configured, the transport falls back to printing the link to the server
 log and verification is **not** enforced. That is not a loophole, it is the only coherent

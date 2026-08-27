@@ -66,16 +66,32 @@ services:
 
       # --- Email verification ---------------------------------------------
       #
-      # Leave EMAIL_API_KEY blank and the service still deploys: registration then signs
-      # people straight in, exactly as it did before, because no confirmation link could
-      # be delivered.
+      # Leave these blank and the service still deploys: registration then signs people
+      # straight in, exactly as it did before, because no link could be delivered.
       #
-      # To turn verification on, sign up at https://app.brevo.com (free, 300/day, no
-      # card), verify one sender address, then set both of these in the Render dashboard.
-      # No redeploy is needed -- Render restarts the service when a variable changes.
+      # The recommended transport is plain SMTP through an ordinary mailbox. Gmail allows
+      # 500 recipients a day, needs no domain, and has no approval queue -- unlike the
+      # hosted APIs, where a new Brevo account is held for manual review and a Resend
+      # account without a domain silently delivers only to its own owner.
+      #
+      # Create an app password at https://myaccount.google.com/apppasswords (2-Step
+      # Verification has to be on first), then set these in the Render dashboard. No
+      # redeploy is needed -- Render restarts the service when a variable changes.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: '587'
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+
+      # Alternative to SMTP: a Brevo (xkeysib-...) or Resend (re_...) API key. The right
+      # driver is chosen from the prefix. SMTP wins if both are configured.
       - key: EMAIL_API_KEY
         sync: false
-      # Must match the sender address verified with Brevo.
+
+      # Defaults to SMTP_USER, so it only needs setting for the HTTP providers.
       - key: EMAIL_FROM
         sync: false
       - key: EMAIL_FROM_NAME
