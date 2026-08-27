@@ -56,12 +56,37 @@ portable:
 
 nsis:
   artifactName: RocksCord-Setup-${version}.exe
+
+  # A real wizard rather than a one-click drop: welcome, install location, progress,
+  # finish. Someone installing software they were sent by a friend should be able to see
+  # where it is going and change it.
   oneClick: false
-  perMachine: false
   allowToChangeInstallationDirectory: true
+
+  # Per-user, which is what avoids a UAC prompt entirely -- most people receiving this
+  # will not have an administrator account, and a shield prompt on an unsigned installer
+  # is exactly the moment they abandon it.
+  perMachine: false
+
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: RocksCord
+  menuCategory: false
+
+  # Offer to launch on the final page. Ticked by default.
+  runAfterFinish: true
+
+  # Branding. All three are generated from the app icon by `npm run icons`; the sizes are
+  # fixed by NSIS and the format must be BMP.
+  installerSidebar: installerSidebar.bmp
+  uninstallerSidebar: uninstallerSidebar.bmp
+  installerHeader: installerHeader.bmp
+  installerHeaderIcon: icon.png
+
+  # Leave %APPDATA%\RocksCord alone on uninstall, so reinstalling keeps the chosen server
+  # and window position. Removing it silently would also throw away the local database of
+  # anyone running their own server.
+  deleteAppDataOnUninstall: false
 
 linux:
   icon: assets/icon.png

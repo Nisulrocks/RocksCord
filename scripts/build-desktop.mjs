@@ -196,12 +196,11 @@ if (!existsSync(path.join(drizzleDir, 'meta', '_journal.json'))) {
 }
 cpSync(drizzleDir, path.join(resourcesDir, 'drizzle'), { recursive: true });
 
-// The server picker page. Plain HTML, copied verbatim -- it must load before any
-// server exists, so it is deliberately not part of the bundled client.
-cpSync(
-  path.join(desktopDir, 'src', 'connect.html'),
-  path.join(buildDir, 'connect.html'),
-);
+// Standalone pages, copied verbatim. Both have to render before any server exists, so
+// neither can be part of the bundled client.
+for (const page of ['connect.html', 'splash.html']) {
+  cpSync(path.join(desktopDir, 'src', page), path.join(buildDir, page));
+}
 
 // The window icon, used before packaging replaces it with the .ico.
 const iconSource = path.join(desktopDir, 'assets', 'icon.png');

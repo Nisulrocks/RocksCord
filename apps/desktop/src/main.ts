@@ -194,6 +194,96 @@ async function startEmbeddedServer(config: DesktopConfig): Promise<RunningServer
 }
 
 /* -------------------------------------------------------------------------- */
+/* Splash                                                                      */
+/* -------------------------------------------------------------------------- */
+
+let splashWindow: BrowserWindow | null = null;
+
+/** How long to wait before admitting that a sleeping free-tier server is the hold-up. */
+const COLD_START_HINT_MS = 8_000;
+let coldStartTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Show the startup window.
+ *
+ * The main window is created hidden and only revealed once it has painted, which on a
+ * cold remote server can be the better part of a minute. Without something on screen for
+ * that stretch, double-clicking the icon appears to do nothing at all and people click
+ * again, so this is load-bearing rather than decorative.
+ */
+function openSplash(): void {
+  if (splashWindow && !splashWindow.isDestroyed()) return;
+
+  splashWindow = new BrowserWindow({
+    width: 420,
+    height: 290,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    center: true,
+    // Above the (still empty) main window, but not above every other app on the desktop.
+    alwaysOnTop: true,
+    // Kept in the taskbar deliberately: it is the only evidence the app is launching.
+    skipTaskbar: false,
+    title: 'RocksCord',
+    icon: path.join(here, 'icon.png'),
+    // No preload and no Node: the page is static, and status text arrives via
+    // executeJavaScript from this process.
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+
+  splashWindow.on('closed', () => {
+    splashWindow = null;
+  });
+
+  void splashWindow.loadFile(path.join(here, 'splash.html'));
+  log.info('splash shown');
+}
+
+/** Update the line of text under the progress bar. Safe to call at any time. */
+function setSplashStatus(text: string, patient = false): void {
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+  // JSON.stringify does the escaping; every caller passes a literal anyway.
+  const script = `window.__rockscordStatus && window.__rockscordStatus(${JSON.stringify(
+    text,
+  )}, ${JSON.stringify(patient)})`;
+  splashWindow.webContents.executeJavaScript(script).catch(() => {
+    // The window can be torn down mid-call; there is nothing useful to do about it.
+  });
+}
+
+function closeSplash(): void {
+  if (coldStartTimer) {
+    clearTimeout(coldStartTimer);
+    coldStartTimer = null;
+  }
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+    log.info('splash dismissed');
+  }
+  splashWindow = null;
+}
+
+/**
+ * After a few seconds of nothing, say why.
+ *
+ * Render's free tier stops the service after 15 minutes idle and takes ~50 seconds to
+ * wake. Naming that turns "this app is broken" into "this app is waiting", which is the
+ * difference between someone waiting and someone force-quitting.
+ */
+function armColdStartHint(): void {
+  if (coldStartTimer) clearTimeout(coldStartTimer);
+  coldStartTimer = setTimeout(() => {
+    setSplashStatus(
+      'Still waking the server. The free tier sleeps when idle, so this first connection can take up to a minute.',
+      true,
+    );
+  }, COLD_START_HINT_MS);
+}
+
+/* -------------------------------------------------------------------------- */
 /* Window                                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -227,8 +317,13 @@ function createWindow(targetUrl: string): BrowserWindow {
     },
   });
 
-  // Avoid a flash of empty window while the SPA boots.
-  window.once('ready-to-show', () => window.show());
+  // Avoid a flash of empty window while the SPA boots. The splash covers this gap, and
+  // is only dismissed once there is something real to replace it with.
+  window.once('ready-to-show', () => {
+    closeSplash();
+    window.show();
+    window.focus();
+  });
 
   window.on('close', () => {
     if (!window.isDestroyed()) {
@@ -264,6 +359,8 @@ function createWindow(targetUrl: string): BrowserWindow {
     // -3 is ERR_ABORTED, which fires on ordinary client-side navigations.
     if (errorCode === -3) return;
     log.error(`failed to load ${failedUrl}: ${errorDescription}`);
+    // Otherwise the always-on-top splash sits over the dialog asking what to do about it.
+    closeSplash();
     void dialog.showMessageBox(window, {
       type: 'error',
       title: 'Could not connect',
@@ -274,8 +371,14 @@ function createWindow(targetUrl: string): BrowserWindow {
           : `The built-in server did not respond.\n\n${errorDescription}`,
       buttons: ['Retry', 'Quit'],
     }).then((result) => {
-      if (result.response === 0) void window.loadURL(targetUrl);
-      else app.quit();
+      if (result.response === 0) {
+        openSplash();
+        setSplashStatus('Retrying…');
+        armColdStartHint();
+        void window.loadURL(targetUrl);
+      } else {
+        app.quit();
+      }
     });
   });
 
@@ -481,6 +584,10 @@ if (!gotLock) {
 
   app.whenReady().then(async () => {
     log.info('Electron ready');
+
+    // Before any decisions are made, so the window appears within a few hundred
+    // milliseconds of the icon being double-clicked.
+    openSplash();
     /*
      * Deciding what to connect to, in priority order:
      *   1. --server=URL on the command line (wins for this launch only)
@@ -502,6 +609,7 @@ if (!gotLock) {
     // private server the person cannot share with anyone.
     if (!config.chosen && !remoteOverride) {
       log.info('no server chosen yet — showing the picker');
+      closeSplash();
       openConnectWindow();
       return;
     }
@@ -512,8 +620,19 @@ if (!gotLock) {
       if (config.mode === 'remote' && config.remoteUrl) {
         targetUrl = config.remoteUrl;
         log.info(`remote mode: ${targetUrl}`);
+        // The host alone, not the full URL -- it is shorter and it is the part that
+        // tells someone which server they are about to join.
+        let host = targetUrl;
+        try {
+          host = new URL(targetUrl).host;
+        } catch {
+          // A malformed saved URL still fails informatively at load time.
+        }
+        setSplashStatus(`Connecting to ${host}…`);
+        armColdStartHint();
       } else {
         log.info('starting embedded server');
+        setSplashStatus('Starting the local server…');
         server = await startEmbeddedServer(config);
         targetUrl = server.url;
         // Persist the generated secret so the next launch keeps existing sessions valid.
@@ -521,6 +640,7 @@ if (!gotLock) {
       }
     } catch (error) {
       log.error('failed to start:', error);
+      closeSplash();
       dialog.showErrorBox(
         'RocksCord could not start',
         `The built-in server failed to start.\n\n${
@@ -556,6 +676,7 @@ if (!gotLock) {
     );
 
     log.info(`opening window at ${targetUrl}`);
+    setSplashStatus('Loading RocksCord…');
     buildMenu(targetUrl);
     mainWindow = createWindow(targetUrl);
     log.info('window created');

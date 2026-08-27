@@ -136,23 +136,30 @@ npm run build:exe -- --server=https://your-app.onrender.com
 That address is compiled into the executable. Anyone who runs it connects to your server
 on first launch — **no picker, no typing, no instructions**.
 
-Your exe is at:
+Two files come out, in `apps\desktop\release\`:
 
 ```
-apps\desktop\release\RocksCord.exe
+RocksCord-Setup-1.0.0.exe    the installer -- send this one
+RocksCord.exe                portable, for anyone who would rather not install
 ```
 
 ### A5. Send it
 
-Upload `RocksCord.exe` to Google Drive, Dropbox, or WeTransfer and send the link.
-It is ~98 MB, so Discord's own 25 MB attachment limit will not take it.
+Upload `RocksCord-Setup-1.0.0.exe` to Google Drive, Dropbox, or WeTransfer and send the
+link. It is ~99 MB, so Discord's own 25 MB attachment limit will not take it.
+
+The installer is entirely self-contained -- the Electron runtime, the Node server, the
+database engine, the web client, and your server's address are all inside that one file.
+Nothing else has to be installed first.
 
 Tell your friends two things:
 
 1. Windows SmartScreen will warn about an unknown publisher — click **More info** →
    **Run anyway**. That is because the exe is not code-signed (certificates cost money);
    it is not a sign of anything wrong.
-2. The first launch takes about 10 seconds while it unpacks. After that it is instant.
+2. A splash window appears almost immediately. If your Render service was asleep it
+   will say so while it wakes -- up to about a minute for whoever opens the app first.
+   After that it is instant.
 
 They open it, register an account, and they are in your server with you.
 

@@ -458,14 +458,38 @@ Output, in `apps/desktop/release/`:
 
 | File | Size | What it is |
 |---|---|---|
-| **`RocksCord.exe`** | ~98 MB | **Portable — double-click to run. No installation.** |
-| `RocksCord-Setup-1.0.0.exe` | ~98 MB | Installer with Start-menu and desktop shortcuts |
+| **`RocksCord-Setup-1.0.0.exe`** | ~99 MB | **Installer — branded wizard, shortcuts, uninstaller. The one to send people.** |
+| `RocksCord.exe` | ~99 MB | Portable — double-click to run, nothing installed |
 | `win-unpacked/` | ~250 MB | Unpacked folder; copy it anywhere and run `RocksCord.exe` |
+
+### The installer
+
+`RocksCord-Setup-1.0.0.exe` is a normal NSIS wizard: a branded welcome page, a choice of
+install location, a progress page, and a finish page offering to launch. It installs
+**per-user**, which is what avoids a UAC prompt — most people receiving this will not have
+an administrator account, and a shield prompt on an unsigned installer is the moment they
+give up on it.
+
+The sidebar and header artwork are generated from the app icon by `npm run icons`. They
+have to be BMP at fixed sizes (164x314 and 150x57); NSIS reads nothing else for those
+slots.
+
+Uninstalling leaves `%APPDATA%\RocksCord` alone, so reinstalling keeps your chosen server
+and window position — and does not silently delete the local database of anyone running
+their own server.
 
 ### What happens when you run it
 
-Double-click → the embedded server starts on a free loopback port → the window opens.
-No configuration, no separate server to launch, and it works with no internet connection.
+Double-click → a splash window appears within about 100 ms → the embedded server starts on
+a free loopback port, or the remote one is contacted → the splash is replaced by the app.
+No configuration, no separate server to launch, and the embedded mode works with no
+internet connection.
+
+The splash is not decoration. When the app points at a free-tier host, the server may be
+asleep and take ~50 seconds to answer; after 8 seconds of silence the splash says so
+explicitly, which is the difference between someone waiting and someone deciding the app
+is broken. It is dismissed on the main window's `ready-to-show`, so it never uncovers a
+half-painted window.
 
 Its data lives in `%APPDATA%\RocksCord\`:
 
@@ -475,7 +499,7 @@ Its data lives in `%APPDATA%\RocksCord\`:
 | `data\uploads\` | Uploaded files |
 | `config.json` | Window size, signing key, mode |
 | `server-url.txt` | The address the embedded server is on |
-| `desktop.log` | Startup and error log |
+| `desktop.log` | Startup and error log, including the splash lifecycle |
 
 Delete that folder to reset the app completely.
 

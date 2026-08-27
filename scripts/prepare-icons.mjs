@@ -2,8 +2,8 @@
  * Icon pipeline: `npm run icons`
  *
  * Takes one source PNG and produces every size the app needs — the Electron window and
- * installer icon, and the web favicons — so the whole visual identity comes from a single
- * file you can swap and re-run.
+ * installer icon, the web favicons, and the installer wizard's own artwork — so the whole
+ * visual identity comes from a single file you can swap and re-run.
  *
  * Source (first match wins):
  *   assets/icon-source.png
@@ -313,4 +313,201 @@ for (const { file, size } of OUTPUTS) {
   );
 }
 
-console.log('\nIcons written.\n');
+/* -------------------------------------------------------------------------- */
+/* Installer artwork                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The installer's artwork has to be BMP: NSIS predates PNG support for these slots and
+ * still will not read anything else. BMP is the easier format of the two anyway — no
+ * compression and no checksums, just pixels stored in a slightly awkward order.
+ */
+
+/** A blank RGBA canvas. */
+function canvas(width, height) {
+  return { width, height, pixels: Buffer.alloc(width * height * 4) };
+}
+
+/**
+ * Fill with a vertical gradient, plus an optional soft radial glow.
+ *
+ * Both are computed per pixel rather than approximated with bands. The whole panel is
+ * under 60,000 pixels, and banding across a dark gradient is exactly the artefact that
+ * makes an installer look thrown together.
+ */
+function paintBackdrop(target, { top, bottom, glow, glowAt, glowRadius }) {
+  const { width, height, pixels } = target;
+
+  for (let y = 0; y < height; y += 1) {
+    const t = height === 1 ? 0 : y / (height - 1);
+
+    for (let x = 0; x < width; x += 1) {
+      let r = top[0] + (bottom[0] - top[0]) * t;
+      let g = top[1] + (bottom[1] - top[1]) * t;
+      let b = top[2] + (bottom[2] - top[2]) * t;
+
+      if (glow) {
+        const dx = x - glowAt[0];
+        const dy = y - glowAt[1];
+        // Smooth falloff: full strength at the centre, nothing at the radius.
+        const distance = Math.sqrt(dx * dx + dy * dy) / glowRadius;
+        if (distance < 1) {
+          const strength = (1 - distance) ** 2 * 0.55;
+          r += (glow[0] - r) * strength;
+          g += (glow[1] - g) * strength;
+          b += (glow[2] - b) * strength;
+        }
+      }
+
+      const i = (y * width + x) * 4;
+      pixels[i] = Math.round(r);
+      pixels[i + 1] = Math.round(g);
+      pixels[i + 2] = Math.round(b);
+      pixels[i + 3] = 255;
+    }
+  }
+
+  return target;
+}
+
+/** Alpha-composite an RGBA image onto the canvas at (originX, originY). */
+function blit(target, source, originX, originY) {
+  for (let y = 0; y < source.height; y += 1) {
+    const ty = originY + y;
+    if (ty < 0 || ty >= target.height) continue;
+
+    for (let x = 0; x < source.width; x += 1) {
+      const tx = originX + x;
+      if (tx < 0 || tx >= target.width) continue;
+
+      const si = (y * source.width + x) * 4;
+      const alpha = source.pixels[si + 3] / 255;
+      if (alpha === 0) continue;
+
+      const ti = (ty * target.width + tx) * 4;
+      for (let c = 0; c < 3; c += 1) {
+        target.pixels[ti + c] = Math.round(
+          source.pixels[si + c] * alpha + target.pixels[ti + c] * (1 - alpha),
+        );
+      }
+      target.pixels[ti + 3] = 255;
+    }
+  }
+
+  return target;
+}
+
+/**
+ * 24-bit uncompressed BMP.
+ *
+ * Two quirks of the format, either of which silently produces garbage if missed: rows are
+ * stored bottom-to-top, and every row is padded to a multiple of four bytes.
+ */
+function encodeBmp({ width, height, pixels }) {
+  const rowSize = Math.ceil((width * 3) / 4) * 4;
+  const imageSize = rowSize * height;
+  const fileHeaderSize = 14;
+  const infoHeaderSize = 40;
+
+  const buffer = Buffer.alloc(fileHeaderSize + infoHeaderSize + imageSize);
+
+  buffer.write('BM', 0, 'ascii');
+  buffer.writeUInt32LE(buffer.length, 2);
+  buffer.writeUInt32LE(fileHeaderSize + infoHeaderSize, 10); // where the pixels start
+
+  buffer.writeUInt32LE(infoHeaderSize, 14);
+  buffer.writeInt32LE(width, 18);
+  buffer.writeInt32LE(height, 22);
+  buffer.writeUInt16LE(1, 26); // colour planes
+  buffer.writeUInt16LE(24, 28); // bits per pixel
+  buffer.writeUInt32LE(imageSize, 34);
+  buffer.writeInt32LE(2835, 38); // ~72 DPI horizontally
+  buffer.writeInt32LE(2835, 42); // ~72 DPI vertically
+
+  const dataStart = fileHeaderSize + infoHeaderSize;
+  for (let y = 0; y < height; y += 1) {
+    const sourceRow = height - 1 - y; // bottom-up
+    let offset = dataStart + y * rowSize;
+
+    for (let x = 0; x < width; x += 1) {
+      const i = (sourceRow * width + x) * 4;
+      buffer[offset] = pixels[i + 2]; // B
+      buffer[offset + 1] = pixels[i + 1]; // G
+      buffer[offset + 2] = pixels[i]; // R
+      offset += 3;
+    }
+  }
+
+  return buffer;
+}
+
+// The app's own palette, so the installer does not look like a different product.
+const SURFACE_TOP = [12, 13, 20];
+const SURFACE_BOTTOM = [26, 22, 48];
+const ACCENT = [108, 92, 255];
+
+/** The tall panel beside the welcome and finish pages. 164x314 is fixed by NSIS. */
+function buildSidebar() {
+  const width = 164;
+  const height = 314;
+  const iconSize = 92;
+  const iconY = 78;
+
+  const panel = paintBackdrop(canvas(width, height), {
+    top: SURFACE_TOP,
+    bottom: SURFACE_BOTTOM,
+    glow: ACCENT,
+    glowAt: [width / 2, iconY + iconSize / 2],
+    glowRadius: 132,
+  });
+
+  return blit(panel, resize(decoded, iconSize), Math.round((width - iconSize) / 2), iconY);
+}
+
+/** The small strip in the header of every other page. 150x57, also fixed. */
+function buildHeader() {
+  const width = 150;
+  const height = 57;
+  const iconSize = 40;
+
+  /*
+   * White rather than the dark panel: NSIS draws this into the wizard's header band,
+   * which Windows paints light. A dark image there reads as a mis-sized black rectangle
+   * rather than as branding.
+   */
+  const strip = paintBackdrop(canvas(width, height), {
+    top: [255, 255, 255],
+    bottom: [255, 255, 255],
+  });
+
+  return blit(
+    strip,
+    resize(decoded, iconSize),
+    width - iconSize - 10,
+    Math.round((height - iconSize) / 2),
+  );
+}
+
+const desktopAssets = path.join(root, 'apps', 'desktop', 'assets');
+mkdirSync(desktopAssets, { recursive: true });
+
+const sidebarBmp = encodeBmp(buildSidebar());
+const headerBmp = encodeBmp(buildHeader());
+
+const BITMAPS = [
+  // electron-builder finds these by name inside the buildResources directory.
+  { file: path.join(desktopAssets, 'installerSidebar.bmp'), data: sidebarBmp, label: '164x314' },
+  { file: path.join(desktopAssets, 'uninstallerSidebar.bmp'), data: sidebarBmp, label: '164x314' },
+  { file: path.join(desktopAssets, 'installerHeader.bmp'), data: headerBmp, label: ' 150x57' },
+];
+
+for (const { file, data, label } of BITMAPS) {
+  writeFileSync(file, data);
+  console.log(
+    `  ${label}  ${(data.length / 1024).toFixed(1).padStart(7)} KB  ${path
+      .relative(root, file)
+      .replace(/\\/g, '/')}`,
+  );
+}
+
+console.log('\nIcons and installer artwork written.\n');

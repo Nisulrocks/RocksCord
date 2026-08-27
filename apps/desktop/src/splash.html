@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Startup splash.
+
+      Shown from the moment Electron is ready until the app window has painted. On a free
+      hosting tier that gap can be most of a minute while the server wakes, so this is not
+      decoration: without it the app looks like it failed to launch.
+
+      Everything is inline and self-contained. This page has to render before any server
+      exists, so it cannot reference the bundled client, and the CSP forbids loading
+      anything at all beyond the icon that sits next to it on disk.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <title>RocksCord</title>
+    <style>
+      :root {
+        --surface: #0e0f16;
+        --surface-edge: #232538;
+        --ink: #e9e9f2;
+        --ink-dim: #8f90a6;
+        --accent: #6c5cff;
+        --accent-soft: #8b7dff;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        /* The window itself is transparent; the rounded card below is the only thing
+           actually painted, which is what gives the corners their shape. */
+        background: transparent;
+        overflow: hidden;
+        user-select: none;
+        cursor: default;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+          sans-serif;
+      }
+
+      .card {
+        position: relative;
+        height: 100%;
+        border-radius: 14px;
+        border: 1px solid var(--surface-edge);
+        background: radial-gradient(70% 60% at 50% 0%, #1b1a33 0%, var(--surface) 62%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        overflow: hidden;
+        /* The whole card is a drag handle, so the splash can be moved out of the way. */
+        -webkit-app-region: drag;
+      }
+
+      /* A slow sweep of light across the top edge, so the window reads as alive even
+         during the long silent stretch while a sleeping server wakes up. */
+      .card::before {
+        content: '';
+        position: absolute;
+        inset: -1px -1px auto -1px;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          var(--accent) 50%,
+          transparent 100%
+        );
+        animation: sweep 2.6s ease-in-out infinite;
+      }
+
+      @keyframes sweep {
+        0%,
+        100% {
+          opacity: 0.15;
+          transform: translateX(-30%);
+        }
+        50% {
+          opacity: 0.9;
+          transform: translateX(30%);
+        }
+      }
+
+      .mark {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+      }
+
+      .mark img {
+        width: 54px;
+        height: 54px;
+        /* A soft bloom in the brand colour, matching the app's own accent glow. */
+        filter: drop-shadow(0 0 18px rgba(108, 92, 255, 0.45));
+      }
+
+      .wordmark {
+        font-size: 27px;
+        font-weight: 600;
+        letter-spacing: -0.5px;
+        color: var(--ink);
+      }
+
+      .track {
+        width: 208px;
+        height: 3px;
+        border-radius: 2px;
+        background: #20222f;
+        overflow: hidden;
+      }
+
+      /*
+       * Indeterminate rather than a percentage. The two things being waited on -- a
+       * server waking and a page painting -- report no progress at all, so a filling bar
+       * would be a lie about information we do not have.
+       */
+      .track span {
+        display: block;
+        width: 42%;
+        height: 100%;
+        border-radius: 2px;
+        background: linear-gradient(90deg, var(--accent), var(--accent-soft));
+        animation: slide 1.35s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+      }
+
+      @keyframes slide {
+        0% {
+          transform: translateX(-115%);
+        }
+        100% {
+          transform: translateX(345%);
+        }
+      }
+
+      .status {
+        font-size: 12.5px;
+        color: var(--ink-dim);
+        text-align: center;
+        padding: 0 26px;
+        line-height: 17px;
+        min-height: 34px;
+        /* Fixed height and centred, so a two-line message does not shift the bar. */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .status.patient {
+        color: #b9a24a;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .card::before,
+        .track span {
+          animation: none;
+        }
+        .track span {
+          width: 100%;
+          opacity: 0.5;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="mark">
+        <img src="icon.png" alt="" width="54" height="54" />
+        <span class="wordmark">RocksCord</span>
+      </div>
+
+      <div class="track"><span></span></div>
+
+      <p class="status" id="status">Starting&hellip;</p>
+    </div>
+
+    <script>
+      /*
+       * Driven from the main process with executeJavaScript rather than IPC.
+       *
+       * This window has no preload and therefore no bridge, and giving it one would mean
+       * opening an IPC channel purely to write two lines of text. The main process is the
+       * only possible caller and every message it sends is a fixed string.
+       */
+      window.__rockscordStatus = function (text, patient) {
+        var el = document.getElementById('status');
+        if (!el) return;
+        el.textContent = text;
+        el.classList.toggle('patient', Boolean(patient));
+      };
+    </script>
+  </body>
+</html>
