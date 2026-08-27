@@ -52,9 +52,11 @@ const setting = (name) => process.env[name] || fileEnv[name] || '';
 function resolveDriver() {
   const explicit = setting('EMAIL_DRIVER');
   if (explicit && explicit !== 'auto') return explicit;
-  if (setting('SMTP_HOST') && setting('SMTP_USER') && setting('SMTP_PASSWORD')) return 'smtp';
+  // Same precedence as the server: an API key wins over SMTP when both are present.
+  if (setting('EMAIL_API_KEY').startsWith('api-')) return 'smtp2go';
   if (setting('EMAIL_API_KEY').startsWith('re_')) return 'resend';
   if (setting('EMAIL_API_KEY')) return 'brevo';
+  if (setting('SMTP_HOST') && setting('SMTP_USER') && setting('SMTP_PASSWORD')) return 'smtp';
   return '';
 }
 
@@ -91,6 +93,40 @@ async function sendViaResend({ apiKey, fromEmail, fromName, to }) {
     }),
   });
   return { status: response.status, ok: response.ok, body: await response.text() };
+}
+
+async function sendViaSmtp2go({ apiKey, fromEmail, fromName, to }) {
+  const response = await fetch('https://api.smtp2go.com/v3/email/send', {
+    method: 'POST',
+    headers: {
+      'X-Smtp2go-Api-Key': apiKey,
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({
+      sender: fromName ? `${fromName} <${fromEmail}>` : fromEmail,
+      to: [to],
+      subject: SUBJECT,
+      html_body: HTML,
+      text_body: TEXT,
+    }),
+  });
+
+  const body = await response.text();
+
+  /*
+   * SMTP2GO answers 200 even when it refuses the message, with the outcome in the body.
+   * Judging by the status code alone would call every rejection a success -- the exact
+   * failure this script exists to catch.
+   */
+  let succeeded = 0;
+  try {
+    succeeded = JSON.parse(body)?.data?.succeeded ?? 0;
+  } catch {
+    /* treated as a failure below */
+  }
+
+  return { status: response.status, ok: response.ok && succeeded > 0, body };
 }
 
 async function sendViaSmtp({ fromEmail, fromName, to }) {
@@ -148,14 +184,37 @@ function explain(driver, status, raw, fromEmail) {
         '  which requires 2-Step Verification to be on first.',
       ];
     }
-    if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(message)) {
+    if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|Connection timeout/i.test(message)) {
       return [
-        yellow('Could not reach the SMTP server.'),
-        '  Check SMTP_HOST and SMTP_PORT. Use 587 or 465 -- port 25 is blocked by most',
-        '  networks and hosting providers.',
+        yellow('Could not open an SMTP connection at all.'),
+        '  If this works here but times out once deployed, your host is blocking it:',
+        "  Render's free instances block outbound SMTP on 25, 465 and 587, so no relay",
+        '  can work there regardless of credentials.',
+        '',
+        '  Use a provider with an HTTPS API instead. SMTP2GO needs only a verified',
+        '  sender address, with no domain, and so is unaffected.',
       ];
     }
     return [yellow('SMTP refused the message.') + ' The error above is the server’s own wording.'];
+  }
+
+  if (driver === 'smtp2go') {
+    if (/sender|from address|not verified|unverified/i.test(String(raw))) {
+      return [
+        yellow('SMTP2GO refused the sender address.'),
+        `  ${bold(fromEmail)} has to be added and confirmed under`,
+        '  Sending -> Verified Senders. A single email address is enough; no domain is',
+        '  required. SMTP2GO emails that address a link you have to click.',
+      ];
+    }
+    if (/limit|quota|exceeded/i.test(String(raw))) {
+      return [
+        yellow('Over an SMTP2GO sending limit.'),
+        '  The free plan allows 1,000 a month, 200 a day, and 25 an hour until a domain',
+        '  is verified. The hourly cap is usually the one being hit.',
+      ];
+    }
+    return [yellow('SMTP2GO did not send it.') + ' The response above is its own wording.'];
   }
 
   if (driver === 'resend' && (status === 403 || /testing emails|own email address/i.test(message))) {
@@ -232,7 +291,7 @@ async function main() {
     console.log(dim('No provider is configured locally.\n'));
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     try {
-      const answer = (await rl.question('Which provider? [smtp / brevo / resend]: ')).trim();
+      const answer = (await rl.question('Which provider? [smtp2go / smtp / brevo / resend]: ')).trim();
       driver = answer.toLowerCase();
       if (driver === 'smtp') {
         console.log(dim('\nFor Gmail: host smtp.gmail.com, port 587, and an app password.\n'));
@@ -250,8 +309,8 @@ async function main() {
     }
   }
 
-  if (!['smtp', 'brevo', 'resend'].includes(driver)) {
-    console.error(`\n${red(`Unknown provider "${driver}".`)} Expected smtp, brevo, or resend.\n`);
+  if (!['smtp2go', 'smtp', 'brevo', 'resend'].includes(driver)) {
+    console.error(`\n${red(`Unknown provider "${driver}".`)} Expected smtp2go, smtp, brevo, or resend.\n`);
     return 1;
   }
   if (!fromEmail) {
@@ -267,6 +326,7 @@ async function main() {
   try {
     const args = { apiKey, fromEmail, fromName, to: recipient };
     if (driver === 'smtp') result = await sendViaSmtp(args);
+    else if (driver === 'smtp2go') result = await sendViaSmtp2go(args);
     else if (driver === 'resend') result = await sendViaResend(args);
     else result = await sendViaBrevo(args);
   } catch (error) {

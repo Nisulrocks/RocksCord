@@ -14,6 +14,7 @@ import { env } from '../../env.js';
 import { createBrevoDriver } from './brevo.js';
 import { createResendDriver } from './resend.js';
 import { createSmtpDriver } from './smtp.js';
+import { createSmtp2goDriver } from './smtp2go.js';
 import {
   verificationHtml,
   verificationSubject,
@@ -76,18 +77,28 @@ export function getEmailDriver(): EmailDriver {
  * requirement, so an operator who has bothered to set it up wants it used. Between the two
  * HTTP providers the key itself is unambiguous: Resend issues `re_...`, Brevo `xkeysib-...`.
  */
-function resolveDriverName(): 'smtp' | 'brevo' | 'resend' | 'console' {
+type DriverName = 'smtp2go' | 'smtp' | 'brevo' | 'resend' | 'console';
+
+function resolveDriverName(): DriverName {
   if (env.EMAIL_DRIVER !== 'auto') return env.EMAIL_DRIVER;
-  if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASSWORD) return 'smtp';
+  /*
+   * An API key wins over SMTP when both are present. SMTP is the more fragile of the two
+   * in practice -- several free hosts block outbound SMTP ports entirely -- so an
+   * operator who has configured both almost certainly added the key second, to fix that.
+   */
+  if (env.EMAIL_API_KEY.startsWith('api-')) return 'smtp2go';
   if (env.EMAIL_API_KEY.startsWith('re_')) return 'resend';
   if (env.EMAIL_API_KEY) return 'brevo';
+  if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASSWORD) return 'smtp';
   return 'console';
 }
 
-function createDriver(name: 'smtp' | 'brevo' | 'resend' | 'console'): EmailDriver {
+function createDriver(name: DriverName): EmailDriver {
   const from = { fromEmail: env.EMAIL_FROM, fromName: env.EMAIL_FROM_NAME };
 
   switch (name) {
+    case 'smtp2go':
+      return createSmtp2goDriver({ apiKey: env.EMAIL_API_KEY, ...from });
     case 'smtp':
       return createSmtpDriver({
         host: env.SMTP_HOST,

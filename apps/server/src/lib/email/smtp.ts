@@ -82,10 +82,26 @@ export function createSmtpDriver(options: SmtpOptions): EmailDriver {
               `2-Step Verification. Original error: ${detail}`,
           );
         }
-        if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(detail)) {
+        if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|Connection timeout|Greeting never received/i.test(detail)) {
+          /*
+           * A timeout connecting out to an SMTP port is almost never a wrong hostname --
+           * it is the host refusing to carry the traffic. Render's free tier blocks
+           * outbound 25, 465 and 587 outright, and the symptom is exactly this: a clean
+           * configuration that hangs and then times out, with nothing to suggest the
+           * network is the cause. Naming it saves an afternoon of re-checking passwords.
+           */
+          const onKnownBlockedHost = Boolean(process.env.RENDER);
           throw new Error(
-            `Could not reach ${options.host}:${options.port}. Some hosts block outbound ` +
-              `SMTP on port 25 -- use 587 or 465. Original error: ${detail}`,
+            `Could not open an SMTP connection to ${options.host}:${options.port}. ` +
+              (onKnownBlockedHost
+                ? "Render's free instances block outbound SMTP on ports 25, 465 and 587, so " +
+                  'no SMTP relay can work here regardless of credentials. Use a provider ' +
+                  'with an HTTPS API instead (SMTP2GO needs only a verified sender address, ' +
+                  'no domain), or move to a paid instance.'
+                : 'Many hosts block outbound SMTP. Port 25 is blocked almost universally; ' +
+                  'try 587 or 465, and if those also time out your host is blocking SMTP ' +
+                  'entirely and you need a provider with an HTTPS API.') +
+              ` Original error: ${detail}`,
           );
         }
 

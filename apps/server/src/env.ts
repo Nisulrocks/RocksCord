@@ -114,7 +114,8 @@ const schema = z.object({
    * Which transport delivers verification mail.
    *
    *   auto     infer from whichever credentials are present (see below)
-   *   smtp     any SMTP relay, including Gmail. No domain, no approval queue
+   *   smtp2go  SMTP2GO API. No domain, no review queue, and HTTPS rather than SMTP
+   *   smtp     any SMTP relay, including Gmail. Blocked outright on some free hosts
    *   brevo    Brevo transactional API. Free, but new accounts need activating
    *   resend   Resend API. Excellent, but needs a domain to email anyone but yourself
    *   console  print the link to the server log and send nothing
@@ -122,9 +123,14 @@ const schema = z.object({
    * `console` is what makes local development and the packaged desktop build work with
    * no account anywhere: the link is still generated, it just arrives in the log.
    */
-  EMAIL_DRIVER: z.enum(['auto', 'smtp', 'brevo', 'resend', 'console']).default('auto'),
+  EMAIL_DRIVER: z
+    .enum(['auto', 'smtp2go', 'smtp', 'brevo', 'resend', 'console'])
+    .default('auto'),
 
-  /** API key for the HTTP providers. Brevo keys start `xkeysib-`, Resend keys `re_`. */
+  /**
+   * API key for the HTTP providers. The prefix identifies which one:
+   * SMTP2GO `api-`, Resend `re_`, Brevo `xkeysib-`.
+   */
   EMAIL_API_KEY: z.string().default(''),
   /** Must be an address the provider will accept as a sender. */
   EMAIL_FROM: z.string().default(''),
@@ -222,7 +228,12 @@ function buildEnv(): Env {
   }
   env.PUBLIC_URL = env.PUBLIC_URL.replace(/\/+$/, '');
 
-  if ((env.EMAIL_DRIVER === 'brevo' || env.EMAIL_DRIVER === 'resend') && !env.EMAIL_API_KEY) {
+  if (
+    (env.EMAIL_DRIVER === 'brevo' ||
+      env.EMAIL_DRIVER === 'resend' ||
+      env.EMAIL_DRIVER === 'smtp2go') &&
+    !env.EMAIL_API_KEY
+  ) {
     throw new Error(`EMAIL_DRIVER=${env.EMAIL_DRIVER} requires EMAIL_API_KEY to be set.`);
   }
 

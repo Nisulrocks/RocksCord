@@ -48,123 +48,146 @@ which is how to exercise the flow locally: you copy the link out of the terminal
 
 ## Choosing a provider
 
-One requirement eliminates most of the market: **sending to addresses you do not own,
-without owning a domain.** Your users' addresses are not yours, and a domain costs money.
+Two requirements knock out almost everything:
 
-| Provider | Free allowance | Emails anyone? | Needs a domain? | Gatekeeping |
+1. **Send to addresses you do not own, without owning a domain.** Your users' addresses
+   are not yours, and a domain costs money.
+2. **Reach the provider over HTTPS.** Render's free instances
+   [block outbound SMTP on ports 25, 465 and 587](https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports).
+   No SMTP relay works there at all, whatever the credentials — the symptom is a clean
+   configuration that hangs and times out.
+
+| Provider | Free allowance | Transport | Emails anyone? | Gatekeeping |
 |---|---|---|---|---|
-| **SMTP (Gmail)** | 500/day | Yes | No | None — works immediately |
-| **Brevo** | 300/day | Yes | No | New accounts held for manual approval |
-| **Resend** | 3,000/month | **No**, not without a domain | **Yes** | Instant, once a domain is verified |
+| **SMTP2GO** | 1,000/mo, 200/day, 25/hour | HTTPS | Yes | Confirm one sender address |
+| Brevo | 300/day | HTTPS | Yes | New accounts held for manual approval |
+| Resend | 3,000/mo | HTTPS | **No**, not without a domain | Instant, once a domain is verified |
+| SMTP (Gmail) | 500/day | SMTP | Yes | None — but blocked on Render free |
 
-**Start with SMTP.** It is the only one of the three with nothing standing between you and
-a delivered message, and Gmail's allowance is the largest. Move to Resend later if you buy
-a domain — it is the nicest of the three once that is true.
+**Use SMTP2GO.** It is the only one that clears both requirements with nothing to wait for.
 
-### Why Resend cannot be the free default
+### Why not the others
 
-Until a domain is verified, a Resend account may only send from `onboarding@resend.dev`,
-and messages from that address are delivered **only to the address the Resend account was
-registered with**. It is a sandbox, not a starter tier.
+**SMTP / Gmail** works perfectly on your own machine, on a paid Render instance, and on
+hosts that permit outbound SMTP. On Render's free tier it cannot work at all. The driver
+detects that case and says so rather than reporting a timeout.
 
-That failure is unusually nasty: your own test email arrives, so everything looks correct,
-and every message to an actual user vanishes. RocksCord's Resend driver detects that
-specific rejection and says so explicitly rather than letting it look like a bug here.
-
-If you own a domain, Resend is an excellent choice — verify it under **Domains**, set
-`EMAIL_FROM` to an address at that domain, and the restriction disappears.
-
-### Why Brevo may not work either
-
-Brevo holds new accounts before permitting any transactional send, and refuses everything
-until a human approves:
+**Brevo** holds new accounts before permitting any transactional send:
 
 ```
 HTTP 403 — "Unable to send email. Your SMTP account is not yet activated.
             Please contact us at contact@brevo.com to request activation"
 ```
 
-Approval takes a day or so, and is sometimes declined without much explanation. If you are
-stuck there, switch to SMTP rather than waiting.
+Approval takes a day or so and is sometimes declined. Fine once granted; not something to
+depend on today.
+
+**Resend** is the nicest of the four *if you own a domain*. Without one it may only send
+from `onboarding@resend.dev`, and mail from that address is delivered **only to the address
+the Resend account was registered with**. It is a sandbox, not a starter tier — and it
+fails deceptively, because your own test arrives and every real user's email vanishes. The
+driver detects that specific rejection and names it.
 
 ---
 
-## Setup: SMTP with Gmail (recommended)
+## Setup: SMTP2GO (recommended)
 
-No domain, no approval queue, no third-party signup. About five minutes.
+No domain, no approval queue, works on hosts that block SMTP. About five minutes.
 
-### 1. Turn on 2-Step Verification
+### 1. Sign up
 
-App passwords do not exist without it: **[myaccount.google.com/security](https://myaccount.google.com/security)**
-→ **2-Step Verification**.
+**[smtp2go.com](https://www.smtp2go.com)** — the free plan is permanent and takes no card.
 
-### 2. Create an app password
+### 2. Verify a sender address
 
-**[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)** → name it
-`RocksCord` → **Create**.
+**Sending → Verified Senders → Add Sender → Single Sender Email.**
 
-You get 16 characters in four groups. Copy it — it is shown once. This is *not* your Google
-password, and it can be revoked on its own without touching your account.
+Use an address you can open; your own Gmail is fine. SMTP2GO emails it a link — click it.
+A *single email address* is enough here; you do not need a domain. Skipping the click is
+what causes every send to be refused.
 
-### 3. Set four variables
+### 3. Create an API key
 
-On **Render**: your service → **Environment** → add these, then save. The service restarts
-itself; there is no redeploy to trigger.
+**Sending → API Keys → Add API Key**, with permission to send email.
+
+Keys look like `api-` followed by 32 characters. Copy it — it is shown once.
+
+### 4. Set two variables
+
+On **Render**: your service → **Environment** → add both, then save. Render restarts the
+service by itself; there is no redeploy to trigger.
 
 ```
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=you@gmail.com
-SMTP_PASSWORD=the 16-character app password
+EMAIL_API_KEY=api-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+EMAIL_FROM=the-address-you-verified@gmail.com
 ```
 
-`EMAIL_FROM` defaults to `SMTP_USER`, so it can be left unset. Locally, put the same lines
-in `.env`.
+The driver is chosen from the `api-` prefix, so `EMAIL_DRIVER` can stay `auto`. Delete any
+`SMTP_*` variables you set earlier — they are ignored when a key is present, but leaving
+them is confusing.
 
-Verification switches itself on as soon as SMTP is configured.
-
-> An existing `EMAIL_API_KEY` can stay or go — SMTP takes precedence when both are set.
-
-### 4. Check it
+### 5. Check it
 
 ```bash
 npm run test:email -- you@gmail.com
 ```
 
-Then:
+Then confirm the server picked it up:
 
 ```bash
 curl.exe https://your-app.onrender.com/api/auth/config
 ```
 
-`"requireEmailVerification":true` means the server picked it up.
+`"requireEmailVerification":true` means it did.
+
+> **Watch the hourly cap.** Until a domain is verified, SMTP2GO allows 25 messages an
+> hour. Ordinary sign-ups will never approach that; repeatedly testing resends might.
+
+---
+
+## Setup: SMTP (Gmail)
+
+Right for local development, a paid instance, or any host that permits outbound SMTP.
+**It cannot work on Render's free tier.**
+
+1. Turn on 2-Step Verification: **[myaccount.google.com/security](https://myaccount.google.com/security)**.
+2. Create an app password: **[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)**.
+   Sixteen characters, shown once. This is not your Google password and can be revoked on
+   its own.
+3. Set:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=the app password
+```
+
+`EMAIL_FROM` defaults to `SMTP_USER`. Use port 587 or 465; port 25 is blocked essentially
+everywhere.
 
 ---
 
 ## Setup: Brevo
 
 1. Sign up at **[brevo.com](https://www.brevo.com)**.
-2. **[Senders](https://app.brevo.com/senders/list)** → **Add a sender**. Use an address you
-   can open. Brevo emails it a confirmation link — click it, or every send is refused.
-3. **[API keys](https://app.brevo.com/settings/keys/api)** → **Generate a new API key**.
-   Copy it; it is shown once.
-4. Set `EMAIL_API_KEY` and `EMAIL_FROM` on your host.
+2. **[Senders](https://app.brevo.com/senders/list)** → **Add a sender**, then click the
+   link Brevo emails to that address.
+3. **[API keys](https://app.brevo.com/settings/keys/api)** → generate one (`xkeysib-…`).
+4. Set `EMAIL_API_KEY` and `EMAIL_FROM`.
 
-If sends come back **403 not activated**, see [above](#why-brevo-may-not-work-either).
+If sends return **403 not activated**, the account is still awaiting approval.
 
 ---
 
 ## Setup: Resend
 
-**Only worth doing if you own a domain.** See [above](#why-resend-cannot-be-the-free-default).
+**Only worth doing if you own a domain.**
 
 1. Sign up at **[resend.com](https://resend.com)**.
-2. **Domains** → **Add Domain**, then add the DNS records it gives you at your registrar.
-3. **API Keys** → **Create API Key**. Resend keys start `re_`.
-4. Set `EMAIL_API_KEY` and an `EMAIL_FROM` at your verified domain, e.g.
-   `no-reply@yourdomain.com`.
-
-The driver is picked from the key prefix, so no `EMAIL_DRIVER` is needed.
+2. **Domains** → **Add Domain**, then add the DNS records at your registrar.
+3. **API Keys** → create one (`re_…`).
+4. Set `EMAIL_API_KEY` and an `EMAIL_FROM` at that domain.
 
 ---
 
@@ -172,19 +195,21 @@ The driver is picked from the key prefix, so no `EMAIL_DRIVER` is needed.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `EMAIL_DRIVER` | `auto` | `auto`, `smtp`, `brevo`, `resend`, `console` |
+| `EMAIL_DRIVER` | `auto` | `auto`, `smtp2go`, `smtp`, `brevo`, `resend`, `console` |
 | `SMTP_HOST` | — | e.g. `smtp.gmail.com`. Setting it selects SMTP |
 | `SMTP_PORT` | `587` | 587 for STARTTLS, 465 for implicit TLS. Never 25 |
 | `SMTP_USER` | — | The mailbox address |
 | `SMTP_PASSWORD` | — | App password, not the account password |
-| `EMAIL_API_KEY` | — | Brevo (`xkeysib-…`) or Resend (`re_…`) key |
+| `EMAIL_API_KEY` | — | SMTP2GO (`api-…`), Resend (`re_…`) or Brevo (`xkeysib-…`) key |
 | `EMAIL_FROM` | `SMTP_USER` | Sender address the provider will accept |
 | `EMAIL_FROM_NAME` | `RocksCord` | Display name on the message |
 | `REQUIRE_EMAIL_VERIFICATION` | inferred | Overrides the inference in either direction |
 | `EMAIL_VERIFICATION_TTL_SECONDS` | `86400` | How long a link stays valid |
 
-`auto` reads the credentials: SMTP if a host is configured, then Resend if the key starts
-`re_`, then Brevo if any key is set, otherwise the console.
+`auto` reads the credentials, in this order: SMTP2GO for an `api-` key, Resend for `re_`,
+Brevo for any other key, SMTP if a host and credentials are set, otherwise the console. A
+key wins over SMTP when both are present, since SMTP is the one more likely to be blocked
+by the host.
 
 ---
 
@@ -229,6 +254,10 @@ environment group) and that the restart finished.
 **The service will not start: "EMAIL_FROM is required"**
 A provider is configured but no sender address, and none could be inferred. Set
 `EMAIL_FROM`, or set `SMTP_USER` to an address.
+
+**SMTP times out on Render: "Connection timeout"**
+Render's free instances block outbound SMTP on 25, 465 and 587, so no relay can work there
+whatever the credentials. Switch to SMTP2GO, or upgrade to a paid instance.
 
 **"Invalid login: 535 … BadCredentials" from Gmail**
 An ordinary account password was used. Generate an app password (step 2 above); it needs
