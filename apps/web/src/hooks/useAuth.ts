@@ -37,9 +37,11 @@ interface AuthResponse {
  */
 export type RegisterResult =
   | { status: 'signed-in'; user: SelfUser }
-  | { status: 'verify-email'; email: string };
+  | { status: 'verify-email'; email: string; emailSent: boolean };
 
-type RegisterResponse = AuthResponse | { verificationRequired: true; email: string };
+type RegisterResponse =
+  | AuthResponse
+  | { verificationRequired: true; email: string; emailSent?: boolean };
 
 export type AuthPhase = 'checking' | 'signed-out' | 'signed-in';
 
@@ -162,7 +164,12 @@ export function useAuth() {
       });
 
       if ('verificationRequired' in response) {
-        return { status: 'verify-email', email: response.email };
+        // Absent on an older server; assume it sent rather than raise a false alarm.
+        return {
+          status: 'verify-email',
+          email: response.email,
+          emailSent: response.emailSent ?? true,
+        };
       }
 
       establish(response);

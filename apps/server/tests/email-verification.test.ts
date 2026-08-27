@@ -84,6 +84,46 @@ describe('with an email provider configured', () => {
     expect(test.mail!.lastLink()).toContain('/api/auth/verify-email?token=');
   });
 
+  it('says so when the provider refused the message, rather than claiming it sent', async () => {
+    // Stand in for a bad API key or an unverified sender: the provider rejects the call.
+    test.mail!.send = async () => {
+      throw new Error('Brevo rejected the message (HTTP 400): sender not valid');
+    };
+
+    const response = await register({
+      email: 'undeliverable@test.local',
+      username: 'undeliverable',
+      password: 'correct horse battery',
+    });
+
+    /*
+     * The account must still exist. Losing it because a mail provider was misconfigured
+     * would be a worse failure than the one being reported -- but the person registering
+     * has to be told, or they spend the next ten minutes searching a spam folder for a
+     * message that was never accepted.
+     */
+    expect(response.statusCode).toBe(201);
+    expect(response.json().verificationRequired).toBe(true);
+    expect(response.json().emailSent).toBe(false);
+
+    const [row] = await test.db
+      .select()
+      .from(users)
+      .where(eq(users.email, 'undeliverable@test.local'));
+    expect(row).toBeDefined();
+    expect(row!.emailVerifiedAt).toBeNull();
+  });
+
+  it('reports a successful send as sent', async () => {
+    const response = await register({
+      email: 'deliverable@test.local',
+      username: 'deliverable',
+      password: 'correct horse battery',
+    });
+
+    expect(response.json().emailSent).toBe(true);
+  });
+
   it('refuses to sign in an unverified account and names the address to confirm', async () => {
     await register({
       email: 'unconfirmed@test.local',

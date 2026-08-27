@@ -27,6 +27,7 @@
     "typecheck": "npm run typecheck -w @rockscord/shared && npm run typecheck -w @rockscord/server && npm run typecheck -w @rockscord/web",
     "desktop": "npm run dev -w @rockscord/desktop",
     "smoke": "node scripts/smoke-test.mjs",
+    "test:email": "node scripts/test-email.mjs",
     "icons": "node scripts/prepare-icons.mjs"
   },
   "devDependencies": {

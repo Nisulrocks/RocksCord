@@ -33,6 +33,8 @@ interface PendingVerification {
   email: string;
   /** Distinguishes "you just signed up" from "this old account was never confirmed". */
   fromLogin: boolean;
+  /** False when the server could not hand the message to its provider. */
+  emailSent: boolean;
 }
 
 export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
@@ -99,7 +101,11 @@ export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
 
         if (result.status === 'verify-email') {
           // No session was issued, so there is nowhere to navigate to yet.
-          setPending({ email: result.email, fromLogin: false });
+          setPending({
+            email: result.email,
+            fromLogin: false,
+            emailSent: result.emailSent,
+          });
           return;
         }
       } else {
@@ -111,7 +117,7 @@ export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
         if (error.code === 'EMAIL_NOT_VERIFIED') {
           // The password was correct; only the address is unconfirmed. The server echoes
           // it back because the user may have signed in with their username.
-          setPending({ email: error.email ?? identifier, fromLogin: true });
+          setPending({ email: error.email ?? identifier, fromLogin: true, emailSent: true });
           return;
         }
         if (error.details) {
@@ -169,6 +175,7 @@ export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
           <VerifyEmailNotice
             email={pending.email}
             fromLogin={pending.fromLogin}
+            emailSent={pending.emailSent}
             onBack={() => {
               setPending(null);
               setPassword('');

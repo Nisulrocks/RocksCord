@@ -148,6 +148,32 @@ addresses are fictional and no link would ever arrive.
 
 ---
 
+## When mail does not arrive
+
+Run the diagnostic first. It sends through the provider with the same payload the server
+uses and prints the reply verbatim, which separates "RocksCord is not sending" from "the
+provider is refusing":
+
+```bash
+npm run test:email -- you@example.com
+```
+
+If `EMAIL_API_KEY` and `EMAIL_FROM` are not in your local `.env` (they normally live on
+the host, not your machine) it prompts for them. Nothing is stored.
+
+A rejection names the cause. The two common ones:
+
+- **HTTP 401 `Key not found`** — bad key, or a brand-new Brevo account still held for
+  review before it is allowed to send.
+- **anything mentioning the sender** — `EMAIL_FROM` is not an address that has been added
+  *and confirmed* under Brevo's Senders list. Adding it is not enough: Brevo emails that
+  address a link, and the sender stays unusable until someone clicks it.
+
+If it reports **Accepted** but nothing arrives, the configuration is fine and the problem
+is delivery — check **Brevo → Transactional → Logs** for a bounce or a block.
+
+---
+
 ## Troubleshooting
 
 **`requireEmailVerification` is still `false`**
@@ -162,9 +188,11 @@ A key is set but no sender address. Set both, or neither.
 confirmation link.
 
 **Nothing arrives, and nothing appears in the logs**
-Check the register response. `{"verificationRequired":true}` means the account was created
-and a send was attempted. A send failure during registration is logged at error level and
-does **not** fail the request — the account is real, and the resend button will retry it.
+Check the register response. It carries `emailSent`: `false` means the provider refused the
+message, and the app says so on screen rather than telling you to check your spam folder.
+A send failure never fails the registration itself — the account is real, and the resend
+button will retry it — but the provider's own explanation is in the server log, and
+`npm run test:email` will reproduce it.
 
 **It lands in spam**
 Expected for a new sender with no domain reputation, especially the first message to a

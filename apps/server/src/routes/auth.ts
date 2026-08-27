@@ -365,6 +365,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
        * No session is issued: the whole point is that the address is unproven. The client
        * shows a "check your inbox" screen from `verificationRequired`.
        */
+      let emailSent = true;
       try {
         await issueVerification(db, created!);
       } catch (error) {
@@ -374,10 +375,16 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
          * needs to see this, so it is logged at error level with the provider's own
          * explanation, which is usually a misconfigured sender.
          */
+        emailSent = false;
         request.log.error({ err: error, userId }, 'could not send verification email');
       }
 
-      return reply.status(201).send({ verificationRequired: true, email });
+      /*
+       * `emailSent` is reported rather than swallowed. Without it the screen tells someone
+       * to check an inbox that will never receive anything, and they spend their time
+       * searching a spam folder for a message that was never accepted.
+       */
+      return reply.status(201).send({ verificationRequired: true, email, emailSent });
     },
   );
 
