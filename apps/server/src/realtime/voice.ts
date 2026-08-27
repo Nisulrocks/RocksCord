@@ -29,6 +29,7 @@ export interface VoiceState {
   serverMute: boolean;
   serverDeaf: boolean;
   streaming: boolean;
+  camera: boolean;
   joinedAt: number;
 }
 
@@ -57,6 +58,7 @@ export function joinVoice(userId: string, channelId: string): { previousChannelI
     serverMute: false,
     serverDeaf: false,
     streaming: false,
+    camera: false,
     joinedAt: Date.now(),
   };
 
@@ -83,10 +85,20 @@ export function leaveVoice(userId: string): string | null {
   return channelId;
 }
 
-/** Apply a mute/deafen/streaming change. Returns the new state, or null if not in voice. */
+/**
+ * Apply a mute/deafen/streaming/camera change. Returns the new state, or null if the user
+ * is not in a voice channel.
+ *
+ * Undefined entries in the patch are ignored rather than assigned. Spreading them would
+ * write `undefined` over a real boolean, so callers that build a patch by picking a few
+ * optional fields -- which is exactly what the socket handler does -- would silently
+ * clear everything they did not mention.
+ */
 export function updateVoiceState(
   userId: string,
-  patch: Partial<Pick<VoiceState, 'selfMute' | 'selfDeaf' | 'streaming' | 'serverMute' | 'serverDeaf'>>,
+  patch: Partial<
+    Pick<VoiceState, 'selfMute' | 'selfDeaf' | 'streaming' | 'camera' | 'serverMute' | 'serverDeaf'>
+  >,
 ): VoiceState | null {
   const channelId = userChannel.get(userId);
   if (!channelId) return null;
@@ -95,7 +107,10 @@ export function updateVoiceState(
   const existing = states?.get(userId);
   if (!existing || !states) return null;
 
-  const next: VoiceState = { ...existing, ...patch };
+  const defined = Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined),
+  );
+  const next: VoiceState = { ...existing, ...defined };
 
   // Deafening implies muting: you cannot sensibly transmit while hearing nothing, and
   // every voice client users are familiar with behaves this way.
@@ -153,6 +168,7 @@ export async function hydrateVoiceStates(
       serverMute: state.serverMute,
       serverDeaf: state.serverDeaf,
       streaming: state.streaming,
+      camera: state.camera,
       joinedAt: state.joinedAt,
     }));
 }

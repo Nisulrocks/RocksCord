@@ -240,6 +240,7 @@ export function emitVoiceState(patch: {
   selfMute?: boolean;
   selfDeaf?: boolean;
   streaming?: boolean;
+  camera?: boolean;
 }): void {
   socket?.emit('voice:state', patch);
 }

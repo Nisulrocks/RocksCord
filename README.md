@@ -143,8 +143,11 @@ types become download cards. Content is sniffed from the file's bytes.
 **Search** — SQLite FTS5 full-text search over messages, scoped to channels you can see,
 plus user and channel search.
 
-**Voice** — peer-to-peer WebRTC audio, mute, deafen, real-time speaking detection from
-audio analysis, screen sharing, and per-peer volume. Microphone and output device are
+**Voice and video** — peer-to-peer WebRTC audio, mute, deafen, real-time speaking
+detection from audio analysis, camera video, screen sharing, and per-peer volume. Camera
+and screen can run at once: each is published as its own MediaStream and the pair is
+mapped over the peer relay, because WebRTC delivers anonymous video tracks with no notion
+of which is a webcam. Microphone and output device are
 selectable with a live input meter, and echo cancellation, noise suppression, and automatic
 gain can each be toggled; changes apply to a call already in progress without rejoining.
 
@@ -649,7 +652,6 @@ tooling beyond kick/ban/audit log. Those are listed under
 - **Uploads are capability URLs.** Object keys carry 96 bits of randomness, so links are
   unguessable, but anyone *given* a link can open it without being in the channel. This is
   how image CDNs work; signing every URL would break plain `<img src>`.
-- **No video calls** — screen sharing works, but there is no camera video.
 - **Message history is not virtualised.** 400 messages are kept in memory per channel;
   older ones are re-fetched on scroll. Fine in practice, but not a virtualised list.
 - **The desktop shell does not self-update.** UI and server changes arrive from the server
@@ -678,7 +680,6 @@ Roughly in the order I would do them:
 5. **Threads** — the schema's `reply_to_id` already forms a tree; this is a UI problem.
 6. **An SFU for large voice channels**, behind a feature flag, so the mesh stays the free
    default.
-7. **Camera video**, reusing the existing screen-share negotiation path.
 8. **Redis adapter and shared presence** so more than one instance can run.
 9. **Mobile app** — React Native reusing `packages/shared` wholesale.
 10. **End-to-end encryption for DMs** — the client already renders from tokens rather than

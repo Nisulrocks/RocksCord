@@ -24,6 +24,18 @@ interface VoiceState {
   selfMute: boolean;
   selfDeaf: boolean;
   streaming: boolean;
+  /** True while sending camera video. Independent of `streaming`. */
+  camera: boolean;
+
+  /**
+   * Bumped whenever an inbound video track appears or ends.
+   *
+   * The streams themselves live in a module-level map in `lib/voice`, because a
+   * MediaStream is a mutable handle rather than a value and putting it in the store would
+   * mean components re-rendering on identity changes that mean nothing. This counter is
+   * the one bit React actually needs: "something about video changed, read it again."
+   */
+  videoEpoch: number;
 
   /** userId -> currently talking. Includes me. */
   speaking: Record<string, boolean>;
@@ -41,6 +53,8 @@ interface VoiceState {
   setSelfMute: (muted: boolean) => void;
   setSelfDeaf: (deafened: boolean) => void;
   setStreaming: (streaming: boolean) => void;
+  setCamera: (camera: boolean) => void;
+  bumpVideo: () => void;
   setSpeaking: (userId: string, speaking: boolean) => void;
   setPeerState: (userId: string, state: PeerConnectionState) => void;
   setVolume: (userId: string, volume: number) => void;
@@ -56,6 +70,8 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   selfMute: false,
   selfDeaf: false,
   streaming: false,
+  camera: false,
+  videoEpoch: 0,
   speaking: {},
   peerStates: {},
   volumes: {},
@@ -71,6 +87,8 @@ export const useVoiceStore = create<VoiceState>((set) => ({
     set((state) => ({ selfDeaf, selfMute: selfDeaf ? true : state.selfMute })),
 
   setStreaming: (streaming) => set({ streaming }),
+  setCamera: (camera) => set({ camera }),
+  bumpVideo: () => set((state) => ({ videoEpoch: state.videoEpoch + 1 })),
 
   setSpeaking: (userId, speaking) =>
     set((state) => {
@@ -112,6 +130,8 @@ export const useVoiceStore = create<VoiceState>((set) => ({
       selfMute: false,
       selfDeaf: false,
       streaming: false,
+  camera: false,
+  videoEpoch: 0,
       speaking: {},
       peerStates: {},
       watching: null,

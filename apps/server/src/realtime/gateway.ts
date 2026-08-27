@@ -524,7 +524,21 @@ export function attachGateway(app: FastifyInstance, ctx: AppContext): Gateway {
     });
 
     socket.on('voice:state', async (patch) => {
-      const next = updateVoiceState(userId, patch);
+      /*
+       * Only the fields a user owns about themselves.
+       *
+       * The payload arrives from a client and was previously spread straight onto the
+       * stored state, which included `serverMute` and `serverDeaf` -- moderator-applied
+       * fields. Nothing sets those yet, so this was latent rather than exploitable, but
+       * it would have become "un-mute yourself after a moderator muted you" the moment
+       * that feature landed. Whitelisting here keeps the authority where it belongs.
+       */
+      const next = updateVoiceState(userId, {
+        selfMute: patch?.selfMute,
+        selfDeaf: patch?.selfDeaf,
+        streaming: patch?.streaming,
+        camera: patch?.camera,
+      });
       if (!next) return;
 
       const [participant] = await hydrateVoiceStates(db, [next]);

@@ -296,6 +296,13 @@ Needs two users. Use two private windows, or two desktop windows.
 - [ ] Mute — the mic icon turns red, the other person stops hearing you
 - [ ] Deafen — you hear nothing, and it mutes you too
 - [ ] Undeafen restores both
+- [ ] Turn your camera on — B sees your face in your tile, not your avatar
+- [ ] Your own tile is mirrored and silent; theirs is not mirrored
+- [ ] Turn the camera off — the tile falls back to the avatar for both of you
+- [ ] Unplug the camera while it is on — it switches off cleanly rather than freezing
+- [ ] **Camera and screen share at the same time**: your face stays in your tile while your
+      screen plays on the stage. This is the case that needs the two to be told apart
+- [ ] A third person joining mid-call sees both correctly, not the screen in a camera tile
 - [ ] Share your screen — B sees a LIVE badge and can watch it
 - [ ] Stop sharing from the browser's own bar — the app updates
 - [ ] Disconnect — you disappear from the channel for everyone

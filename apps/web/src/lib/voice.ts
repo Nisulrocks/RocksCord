@@ -20,28 +20,49 @@
 import { DEFAULT_ICE_SERVERS } from '@rockscord/shared';
 import type { SignalPayload } from '@rockscord/shared';
 import { api } from './api';
-import { emitVoiceSignal } from './socket';
+import { emitVoiceSignal, emitVoiceState } from './socket';
 import { useVoiceStore } from '../store/useVoiceStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 interface PeerEntry {
   connection: RTCPeerConnection;
+  /** Audio only. Video is kept apart so the two sources stay distinguishable. */
   stream: MediaStream;
   audio: HTMLAudioElement;
+  /**
+   * Inbound video, one MediaStream per source, keyed by the sender's stream id.
+   *
+   * WebRTC delivers tracks, not intentions: a peer sending both a camera and a screen
+   * arrives as two anonymous video tracks in the same connection. Grouping by the stream
+   * they were published with keeps them separable, and `media-map` below says which is
+   * which.
+   */
+  video: Map<string, MediaStream>;
+  cameraStreamId?: string | null;
+  screenStreamId?: string | null;
   /** Cleanup for the speaking-detection loop. */
   stopAnalyser?: () => void;
 }
 
 interface SignalMessage {
-  type: 'offer' | 'answer' | 'candidate';
+  type: 'offer' | 'answer' | 'candidate' | 'media-map';
   sdp?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit;
+  /**
+   * For 'media-map': which of the sender's stream ids is the camera and which is the
+   * screen. Sent over the existing peer relay rather than added to voice state, because
+   * it is transport detail that only the two endpoints need, and the relay already
+   * carries opaque data between exactly the right pair.
+   */
+  cameraStreamId?: string | null;
+  screenStreamId?: string | null;
 }
 
 const peers = new Map<string, PeerEntry>();
 
 let localStream: MediaStream | null = null;
 let screenStream: MediaStream | null = null;
+let cameraStream: MediaStream | null = null;
 let currentChannelId: string | null = null;
 let selfUserId: string | null = null;
 let iceServers: RTCIceServer[] = DEFAULT_ICE_SERVERS.map((s) => ({ urls: s.urls }));
@@ -148,16 +169,22 @@ function createPeer(peerId: string, channelId: string): PeerEntry {
   audio.srcObject = stream;
   applyOutputSettings(audio);
 
-  const entry: PeerEntry = { connection, stream, audio };
+  const entry: PeerEntry = { connection, stream, audio, video: new Map() };
 
   for (const track of localStream?.getTracks() ?? []) {
     connection.addTrack(track, localStream!);
   }
-  // Captured locally so TypeScript keeps the non-null narrowing inside the loop.
+  // Captured locally so TypeScript keeps the non-null narrowing inside the loops.
   const activeScreenStream = screenStream;
   if (activeScreenStream) {
     for (const track of activeScreenStream.getTracks()) {
       connection.addTrack(track, activeScreenStream);
+    }
+  }
+  const activeCameraStream = cameraStream;
+  if (activeCameraStream) {
+    for (const track of activeCameraStream.getTracks()) {
+      connection.addTrack(track, activeCameraStream);
     }
   }
 
@@ -171,8 +198,31 @@ function createPeer(peerId: string, channelId: string): PeerEntry {
   };
 
   connection.ontrack = (event) => {
+    const sourceId = event.streams[0]?.id;
+
+    if (event.track.kind === 'video') {
+      /*
+       * Video is grouped by the stream it was published with, not merged into one. A peer
+       * sharing their screen *and* their camera sends two video tracks down the same
+       * connection, and pooling them would make it impossible to say which belongs where.
+       */
+      if (sourceId) {
+        const existing = entry.video.get(sourceId) ?? new MediaStream();
+        if (!existing.getTracks().includes(event.track)) existing.addTrack(event.track);
+        entry.video.set(sourceId, existing);
+
+        // A track ending (camera switched off) should take its tile with it.
+        event.track.addEventListener('ended', () => {
+          entry.video.delete(sourceId);
+          useVoiceStore.getState().bumpVideo();
+        });
+      }
+      useVoiceStore.getState().bumpVideo();
+      return;
+    }
+
     for (const track of event.streams[0]?.getTracks() ?? [event.track]) {
-      if (!stream.getTracks().includes(track)) stream.addTrack(track);
+      if (track.kind === 'audio' && !stream.getTracks().includes(track)) stream.addTrack(track);
     }
 
     if (event.track.kind === 'audio') {
@@ -227,6 +277,19 @@ export async function connectToPeer(peerId: string, channelId: string): Promise<
 
   createPeer(peerId, channelId);
   if (shouldInitiate(peerId)) await renegotiate(peerId, channelId);
+
+  /*
+   * Tell the new peer what our video streams are, if any. Without this a latecomer
+   * receives our tracks with no way to classify them, and would render a screen share in
+   * a camera tile.
+   */
+  if (cameraStream || screenStream) {
+    emitVoiceSignal(peerId, channelId, {
+      type: 'media-map',
+      cameraStreamId: cameraStream?.id ?? null,
+      screenStreamId: screenStream?.id ?? null,
+    } satisfies SignalMessage);
+  }
 }
 
 /** Handle an inbound offer/answer/candidate relayed by the server. */
@@ -239,6 +302,15 @@ export async function handleVoiceSignal(payload: SignalPayload): Promise<void> {
   let entry = peers.get(peerId);
   if (!entry) {
     entry = createPeer(peerId, channelId);
+  }
+
+  if (message.type === 'media-map') {
+    // Which of the sender's video streams is which. Arrives independently of the tracks,
+    // so it is recorded whenever it turns up and the UI re-reads on the next epoch bump.
+    entry.cameraStreamId = message.cameraStreamId ?? null;
+    entry.screenStreamId = message.screenStreamId ?? null;
+    useVoiceStore.getState().bumpVideo();
+    return;
   }
 
   try {
@@ -338,6 +410,7 @@ export function stopVoice(): void {
   localStream = null;
 
   stopScreenShare();
+  stopCamera();
 
   currentChannelId = null;
   useVoiceStore.getState().reset();
@@ -507,6 +580,7 @@ export async function startScreenShare(): Promise<boolean> {
     await renegotiate(peerId, currentChannelId);
   }
 
+  broadcastMediaMap();
   return true;
 }
 
@@ -526,10 +600,12 @@ export function stopScreenShare(): void {
 async function stopScreenShareAndNotify(): Promise<void> {
   stopScreenShare();
   useVoiceStore.getState().setStreaming(false);
+  emitVoiceState({ streaming: false });
   if (!currentChannelId) return;
   for (const peerId of peers.keys()) {
     await renegotiate(peerId, currentChannelId);
   }
+  broadcastMediaMap();
 }
 
 /** The remote video track of a peer who is sharing their screen, if any. */
@@ -549,4 +625,132 @@ export function isInVoice(): boolean {
 
 export function currentVoiceChannelId(): string | null {
   return currentChannelId;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Camera                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Tell every peer which of our stream ids is the camera and which is the screen.
+ *
+ * WebRTC carries no notion of "this is a webcam". Both arrive as anonymous video tracks,
+ * and with two of them the receiver has no way to lay them out correctly. The mapping
+ * goes over the existing peer relay rather than through voice state: it is transport
+ * detail that concerns only the two endpoints, and it must arrive alongside the tracks
+ * rather than fanned out to the whole channel.
+ */
+function broadcastMediaMap(): void {
+  if (!currentChannelId) return;
+  for (const peerId of peers.keys()) {
+    emitVoiceSignal(peerId, currentChannelId, {
+      type: 'media-map',
+      cameraStreamId: cameraStream?.id ?? null,
+      screenStreamId: screenStream?.id ?? null,
+    } satisfies SignalMessage);
+  }
+}
+
+/**
+ * Start sending camera video.
+ *
+ * Returns false if the user denied access or has no camera, so the caller can leave the
+ * button un-toggled rather than showing an "on" state that is not.
+ */
+export async function startCamera(): Promise<boolean> {
+  if (!currentChannelId || cameraStream) return false;
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      // Modest by design: this is a mesh, so each participant uploads one copy of this
+      // per other participant. 720p by four people is a lot of upstream on home wifi.
+      video: {
+        width: { ideal: 640 },
+        height: { ideal: 360 },
+        frameRate: { ideal: 24, max: 30 },
+      },
+      audio: false,
+    });
+  } catch {
+    cameraStream = null;
+    return false;
+  }
+
+  // Unplugging a webcam ends the track; treat that exactly like switching it off.
+  cameraStream.getVideoTracks()[0]?.addEventListener('ended', () => {
+    void stopCameraAndNotify();
+  });
+
+  for (const [peerId, entry] of peers) {
+    for (const track of cameraStream.getTracks()) {
+      entry.connection.addTrack(track, cameraStream);
+    }
+    await renegotiate(peerId, currentChannelId);
+  }
+
+  broadcastMediaMap();
+  return true;
+}
+
+export function stopCamera(): void {
+  if (!cameraStream) return;
+
+  for (const track of cameraStream.getTracks()) {
+    track.stop();
+    for (const entry of peers.values()) {
+      const sender = entry.connection.getSenders().find((s) => s.track === track);
+      if (sender) entry.connection.removeTrack(sender);
+    }
+  }
+  cameraStream = null;
+}
+
+async function stopCameraAndNotify(): Promise<void> {
+  stopCamera();
+  useVoiceStore.getState().setCamera(false);
+  emitVoiceState({ camera: false });
+  if (!currentChannelId) return;
+  for (const peerId of peers.keys()) {
+    await renegotiate(peerId, currentChannelId);
+  }
+  broadcastMediaMap();
+}
+
+/** Our own camera feed, for the self-view tile. */
+export function getLocalCameraStream(): MediaStream | null {
+  return cameraStream;
+}
+
+/**
+ * A peer's camera feed, if they are sending one.
+ *
+ * Resolved through the media map rather than by guessing at track order. Before the map
+ * arrives — a window of one relay hop — a peer with exactly one video stream is assumed
+ * to be a camera only if they are not also screen sharing, so the common case renders
+ * immediately instead of waiting.
+ */
+export function getPeerCameraStream(peerId: string): MediaStream | null {
+  const entry = peers.get(peerId);
+  if (!entry) return null;
+
+  if (entry.cameraStreamId) return entry.video.get(entry.cameraStreamId) ?? null;
+  if (entry.cameraStreamId === null) return null; // mapped, and explicitly not sending
+  return null;
+}
+
+/** A peer's screen share, if they are sending one. */
+export function getPeerScreenStream(peerId: string): MediaStream | null {
+  const entry = peers.get(peerId);
+  if (!entry) return null;
+
+  if (entry.screenStreamId) return entry.video.get(entry.screenStreamId) ?? null;
+  if (entry.screenStreamId === null) return null;
+
+  /*
+   * No map yet. Screen sharing predates cameras here and is announced through voice
+   * state, so a lone video stream from a peer is overwhelmingly their screen — falling
+   * back to it keeps existing behaviour intact for anyone running an older client.
+   */
+  const [only] = [...entry.video.values()];
+  return only ?? null;
 }

@@ -177,7 +177,10 @@ export interface VoiceParticipant {
   /** Set by a moderator, not by the user. */
   serverMute: boolean;
   serverDeaf: boolean;
+  /** Sharing their screen. */
   streaming: boolean;
+  /** Sending camera video. Independent of `streaming`: both can be on at once. */
+  camera: boolean;
   joinedAt: number;
 }
 

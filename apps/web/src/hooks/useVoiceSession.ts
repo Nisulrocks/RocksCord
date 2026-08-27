@@ -19,8 +19,10 @@ import {
   connectToPeer,
   setMicrophoneEnabled,
   setOutputMuted,
+  startCamera,
   startScreenShare,
   startVoice,
+  stopCamera,
   stopScreenShare,
   stopVoice,
 } from '../lib/voice';
@@ -35,6 +37,7 @@ export function useVoiceSession() {
   const selfMute = useVoiceStore((s) => s.selfMute);
   const selfDeaf = useVoiceStore((s) => s.selfDeaf);
   const streaming = useVoiceStore((s) => s.streaming);
+  const camera = useVoiceStore((s) => s.camera);
   const connecting = useVoiceStore((s) => s.connecting);
 
   const store = useVoiceStore;
@@ -163,16 +166,40 @@ export function useVoiceSession() {
     }
   }, []);
 
+  const toggleCamera = useCallback(async () => {
+    const state = useVoiceStore.getState();
+    if (!state.channelId) return;
+
+    if (state.camera) {
+      stopCamera();
+      state.setCamera(false);
+      emitVoiceState({ camera: false });
+      return;
+    }
+
+    const started = await startCamera();
+    if (started) {
+      state.setCamera(true);
+      emitVoiceState({ camera: true });
+    } else {
+      // Denied, or no camera. Leaving the flag false keeps the button honest rather than
+      // showing an "on" state that is sending nothing.
+      useUiStore.getState().toast('Could not start your camera', 'error');
+    }
+  }, []);
+
   return {
     channelId,
     connecting,
     selfMute,
     selfDeaf,
     streaming,
+    camera,
     join,
     leave,
     toggleMute,
     toggleDeafen,
     toggleScreenShare,
+    toggleCamera,
   };
 }

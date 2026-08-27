@@ -60,6 +60,7 @@ export interface VoiceStateUpdatePayload {
   selfMute?: boolean;
   selfDeaf?: boolean;
   streaming?: boolean;
+  camera?: boolean;
 }
 
 export interface NotificationPayload {

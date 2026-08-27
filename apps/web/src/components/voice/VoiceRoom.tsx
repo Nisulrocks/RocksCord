@@ -16,6 +16,8 @@ import {
   Monitor,
   PhoneOff,
   ScreenShare,
+  Video,
+  VideoOff,
   Volume2,
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -25,7 +27,13 @@ import { EMPTY_ARRAY, useAppStore } from '../../store/useAppStore';
 import { useUiStore } from '../../store/useUiStore';
 import { useVoiceStore } from '../../store/useVoiceStore';
 import { useVoiceSession } from '../../hooks/useVoiceSession';
-import { getLocalScreenStream, getPeerVideoStream, setPeerVolume } from '../../lib/voice';
+import {
+  getLocalCameraStream,
+  getLocalScreenStream,
+  getPeerCameraStream,
+  getPeerScreenStream,
+  setPeerVolume,
+} from '../../lib/voice';
 import { Avatar } from '../ui/Avatar';
 import { Button, EmptyState, IconButton } from '../ui/primitives';
 
@@ -153,6 +161,14 @@ export function VoiceRoom({ channel }: { channel: Channel }) {
             </ControlButton>
 
             <ControlButton
+              label={voice.camera ? 'Turn off camera' : 'Turn on camera'}
+              onClick={() => void voice.toggleCamera()}
+              highlighted={voice.camera}
+            >
+              {voice.camera ? <Video size={20} /> : <VideoOff size={20} />}
+            </ControlButton>
+
+            <ControlButton
               label={voice.streaming ? 'Stop sharing' : 'Share screen'}
               onClick={() => void voice.toggleScreenShare()}
               highlighted={voice.streaming}
@@ -196,6 +212,54 @@ export function VoiceRoom({ channel }: { channel: Channel }) {
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * A live video element bound to a MediaStream.
+ *
+ * `srcObject` cannot be set through JSX -- React would stringify the stream -- so it is
+ * assigned in an effect. `playsInline` matters on iOS, where a bare `<video>` otherwise
+ * takes over the whole screen the moment it starts.
+ */
+function VideoTile({
+  stream,
+  muted,
+  mirrored,
+  speaking,
+}: {
+  stream: MediaStream;
+  muted?: boolean;
+  mirrored?: boolean;
+  speaking?: boolean;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    element.srcObject = stream;
+    void element.play().catch(() => {
+      // Autoplay can be refused until the page has been interacted with. Joining voice is
+      // itself a click, so this is rare, and failing quietly is correct.
+    });
+    return () => {
+      element.srcObject = null;
+    };
+  }, [stream]);
+
+  return (
+    <video
+      ref={ref}
+      autoPlay
+      playsInline
+      muted={muted}
+      className={clsx(
+        'h-[132px] w-full rounded-lg bg-black object-cover ring-2 transition-colors',
+        speaking ? 'ring-online' : 'ring-transparent',
+        mirrored && 'scale-x-[-1]',
+      )}
+    />
+  );
+}
+
 function ParticipantTile({
   participant,
   isSelf,
@@ -209,9 +273,17 @@ function ParticipantTile({
 }) {
   const speaking = useVoiceStore((s) => s.speaking[participant.userId] ?? false);
   const peerState = useVoiceStore((s) => s.peerStates[participant.userId]);
+  // Re-read the streams whenever a video track appears or ends; they live outside React.
+  const videoEpoch = useVoiceStore((s) => s.videoEpoch);
 
   const muted = participant.selfMute || participant.serverMute;
   const deafened = participant.selfDeaf || participant.serverDeaf;
+
+  const cameraStream = participant.camera
+    ? isSelf
+      ? getLocalCameraStream()
+      : getPeerCameraStream(participant.userId)
+    : null;
 
   return (
     <div
@@ -222,13 +294,25 @@ function ParticipantTile({
         speaking && !muted ? 'border-online' : 'border-line',
       )}
     >
-      <Avatar
-        userId={participant.userId}
-        name={participant.user.displayName}
-        src={participant.user.avatarUrl}
-        size={84}
-        speaking={speaking && !muted}
-      />
+      {cameraStream ? (
+        <VideoTile
+          key={videoEpoch}
+          stream={cameraStream}
+          // Your own camera is muted and mirrored: hearing yourself would echo, and an
+          // unmirrored self-view feels wrong because it is not what a mirror shows.
+          muted
+          mirrored={isSelf}
+          speaking={speaking && !muted}
+        />
+      ) : (
+        <Avatar
+          userId={participant.userId}
+          name={participant.user.displayName}
+          src={participant.user.avatarUrl}
+          size={84}
+          speaking={speaking && !muted}
+        />
+      )}
 
       <div className="text-center">
         <div className="flex items-center justify-center gap-1.5 text-[15px] font-medium text-ink">
@@ -286,7 +370,7 @@ function FocusedStream({
 
     // Own share comes from the local capture; everyone else's from their peer connection.
     const stream =
-      watchingId === currentUserId ? getLocalScreenStream() : getPeerVideoStream(watchingId);
+      watchingId === currentUserId ? getLocalScreenStream() : getPeerScreenStream(watchingId);
 
     if (!stream) {
       setMissing(true);
