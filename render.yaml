@@ -22,8 +22,10 @@ services:
     plan: free
     region: oregon
 
-    # The build must produce the shared package, the server, and the client.
-    buildCommand: npm ci && npm run build
+    # `--include=dev` is required, not optional: NODE_ENV=production (set below, for the
+    # running service) makes npm skip devDependencies by default — and TypeScript, Vite,
+    # and Tailwind are all devDependencies. Without this the build has no compiler.
+    buildCommand: npm ci --include=dev && npm run build
 
     # `npm start` runs the compiled server, which also serves the built client.
     startCommand: npm start
@@ -63,12 +65,17 @@ services:
         sync: false
 
       # --- File uploads ---------------------------------------------------
-      # Free instances have no persistent disk, so uploads go to Supabase
-      # Storage. Create a PUBLIC bucket named `rockscord-uploads`, then set these.
-      # Leave STORAGE_DRIVER as `local` if you do not need file uploads —
-      # everything else works, uploaded files just disappear on restart.
+      #
+      # Defaults to `local` so the very first deploy always boots. Free instances have
+      # no persistent disk, so uploaded files are lost whenever the service restarts —
+      # everything else works normally.
+      #
+      # For uploads that survive restarts, create a PUBLIC Supabase Storage bucket named
+      # `rockscord-uploads`, fill in the two keys below, then change this to `supabase`.
+      # The server refuses to start with STORAGE_DRIVER=supabase and blank keys, which is
+      # why they are not wired up by default.
       - key: STORAGE_DRIVER
-        value: supabase
+        value: local
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_KEY

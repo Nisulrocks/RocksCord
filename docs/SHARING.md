@@ -74,16 +74,16 @@ Free tier, no card, and WebSockets work on it.
    | `SUPABASE_URL` | leave blank *(see the note below)* |
    | `SUPABASE_SERVICE_KEY` | leave blank |
 
+   Leaving the Supabase fields blank is fine — the blueprint ships with
+   `STORAGE_DRIVER=local`, so the service boots without them.
+
 4. Click **Apply**. The first build takes about 4 minutes.
 
 5. When it goes live, copy the URL at the top — something like
    `https://rockscord.onrender.com`.
 
-6. Go to **Environment** and set:
-   - `PUBLIC_URL` → that URL
-   - `STORAGE_DRIVER` → change from `supabase` to `local` if you left Supabase blank
-
-   Save. It redeploys automatically.
+6. Go to **Environment** and set `PUBLIC_URL` to that URL. Save — it redeploys
+   automatically.
 
 **Check it worked** — open `https://your-app.onrender.com/health` in a browser. You want:
 
