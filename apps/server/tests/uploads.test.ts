@@ -246,3 +246,81 @@ describe('server icons', () => {
     expect(response.json().iconUrl).toContain('http');
   });
 });
+
+/**
+ * Serving uploaded files over HTTP.
+ *
+ * These use the *real* on-disk storage driver rather than the in-memory fake, because the
+ * fake never touches the `/uploads` static route — and that gap once hid a bug where
+ * serving an existing file threw inside the send pipeline. It did not surface as a 500:
+ * the response simply never completed, so the request hung until the client gave up.
+ */
+describe('serving uploaded files', () => {
+  let disk: TestApp;
+  let owner: TestUser;
+
+  beforeAll(async () => {
+    disk = await createTestApp({ realStorage: true });
+    owner = await registerUser(disk, { username: 'diskuser' });
+  });
+
+  afterAll(async () => {
+    await disk.close();
+  });
+
+  /** Upload through the real pipeline and return the path under /uploads. */
+  async function uploadAndGetPath(fileName: string, contentType: string, data: Buffer) {
+    const { body, headers } = multipart(fileName, contentType, data);
+    const response = await disk.app.inject({
+      method: 'POST',
+      url: '/api/files/upload',
+      headers: { ...owner.auth, ...headers },
+      payload: body,
+    });
+
+    expect(response.statusCode).toBe(201);
+    const url = response.json().attachment.url as string;
+    return url.slice(url.indexOf('/uploads/'));
+  }
+
+  it('serves the bytes back, byte for byte', async () => {
+    const path = await uploadAndGetPath('pixel.png', 'image/png', TINY_PNG);
+
+    const served = await disk.app.inject({ method: 'GET', url: path });
+
+    expect(served.statusCode).toBe(200);
+    expect(served.rawPayload.equals(TINY_PNG)).toBe(true);
+  });
+
+  it('sets the hardening headers on the response', async () => {
+    const path = await uploadAndGetPath('pixel.png', 'image/png', TINY_PNG);
+    const served = await disk.app.inject({ method: 'GET', url: path });
+
+    expect(served.headers['x-content-type-options']).toBe('nosniff');
+    expect(String(served.headers['content-security-policy'])).toContain("default-src 'none'");
+    expect(String(served.headers['cache-control'])).toContain('immutable');
+  });
+
+  it('renders images inline but forces everything else to download', async () => {
+    const image = await uploadAndGetPath('inline.png', 'image/png', TINY_PNG);
+    const text = await uploadAndGetPath('notes.txt', 'text/plain', Buffer.from('plain text\n'));
+
+    const servedImage = await disk.app.inject({ method: 'GET', url: image });
+    const servedText = await disk.app.inject({ method: 'GET', url: text });
+
+    // An image is safe to show in place.
+    expect(servedImage.headers['content-disposition']).toBeUndefined();
+    // Anything else downloads, so a crafted file cannot be navigated to and executed
+    // as a document in the app's own origin.
+    expect(servedText.headers['content-disposition']).toBe('attachment');
+  });
+
+  it('404s for a file that does not exist', async () => {
+    const served = await disk.app.inject({
+      method: 'GET',
+      url: '/uploads/attachments/2026-01/nothing-here.png',
+    });
+
+    expect(served.statusCode).toBe(404);
+  });
+});

@@ -13,7 +13,6 @@
  */
 
 import { existsSync, mkdirSync } from 'node:fs';
-import type { ServerResponse } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cookie from '@fastify/cookie';
@@ -293,21 +292,23 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
       index: false,
       // Files here are user-supplied, so they are served defensively: never sniffed,
       // never rendered as a document, and only images are allowed to display inline.
+      /*
+       * `reply` really is a FastifyReply here, so headers are set with `.header()`.
+       * Calling Node's `.setHeader()` throws *inside* the send pipeline, which does not
+       * surface as a 500 — the response simply never completes and the request hangs
+       * until the client times out. Covered by a test that fetches a real file.
+       */
       setHeaders: (reply, filePath) => {
-        // @fastify/static types this parameter as a FastifyReply, but at runtime the
-        // underlying `send` library hands over the raw ServerResponse. Cast to what is
-        // actually there rather than calling a method that does not exist.
-        const response = reply as unknown as ServerResponse;
-        response.setHeader('X-Content-Type-Options', 'nosniff');
-        response.setHeader(
+        reply.header('X-Content-Type-Options', 'nosniff');
+        reply.header(
           'Content-Security-Policy',
           "default-src 'none'; img-src 'self'; media-src 'self'; sandbox",
         );
-        response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        reply.header('Cache-Control', 'public, max-age=31536000, immutable');
         // Only media renders inline. Everything else downloads, so a crafted file can
         // never be navigated to and executed as a document in the app's origin.
         if (!/\.(png|jpe?g|gif|webp|avif|bmp|mp4|webm|mp3|ogg|wav)$/i.test(filePath)) {
-          response.setHeader('Content-Disposition', 'attachment');
+          reply.header('Content-Disposition', 'attachment');
         }
       },
     });

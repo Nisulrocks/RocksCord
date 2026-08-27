@@ -18,7 +18,7 @@
  *                            which require an actual TCP listener.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -59,7 +59,17 @@ export function createMemoryStorage(): StorageDriver & { files: Map<string, Buff
   };
 }
 
-async function build(listen: boolean): Promise<TestApp> {
+interface BuildOptions {
+  /**
+   * Use the real on-disk storage driver instead of the in-memory fake.
+   *
+   * Needed to exercise the `/uploads` static route, which the memory driver bypasses
+   * entirely — a gap that once hid a bug where serving an existing file hung forever.
+   */
+  realStorage?: boolean;
+}
+
+async function build(listen: boolean, options: BuildOptions = {}): Promise<TestApp> {
   // A private database file per harness, in its own temp directory so the WAL and shm
   // sidecars are cleaned up with it.
   const directory = mkdtempSync(path.join(tmpdir(), 'rockscord-test-'));
@@ -67,7 +77,17 @@ async function build(listen: boolean): Promise<TestApp> {
 
   const handle: DbHandle = await createDb(databaseUrl, undefined);
 
-  setStorageDriver(createMemoryStorage());
+  // The upload directory must exist before the static route is mounted.
+  const uploadDir = path.join(directory, 'uploads');
+  mkdirSync(uploadDir, { recursive: true });
+  process.env.UPLOAD_DIR = uploadDir;
+
+  if (options.realStorage) {
+    // null = fall through to the configured driver, which is `local`.
+    setStorageDriver(null);
+  } else {
+    setStorageDriver(createMemoryStorage());
+  }
 
   const built = await buildApp({
     db: handle.db,
@@ -108,8 +128,8 @@ async function build(listen: boolean): Promise<TestApp> {
   };
 }
 
-export const createTestApp = () => build(false);
-export const createLiveTestApp = () => build(true);
+export const createTestApp = (options?: BuildOptions) => build(false, options);
+export const createLiveTestApp = (options?: BuildOptions) => build(true, options);
 
 /* -------------------------------------------------------------------------- */
 /* Fixtures                                                                    */
