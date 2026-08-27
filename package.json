@@ -1,0 +1,36 @@
+{
+  "name": "rockscord-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RocksCord - a self-hostable, real-time chat platform (Discord-style). Monorepo root.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "concurrently -k -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm run dev -w @rockscord/server",
+    "dev:web": "npm run dev -w @rockscord/web",
+    "build": "npm run build -w @rockscord/shared && npm run build -w @rockscord/server && npm run build -w @rockscord/web",
+    "build:exe": "node scripts/build-exe.mjs",
+    "start": "npm run start -w @rockscord/server",
+    "db:generate": "npm run db:generate -w @rockscord/server",
+    "db:migrate": "npm run db:migrate -w @rockscord/server",
+    "db:seed": "npm run db:seed -w @rockscord/server",
+    "db:reset": "npm run db:reset -w @rockscord/server",
+    "test": "npm run test -w @rockscord/server",
+    "test:watch": "npm run test:watch -w @rockscord/server",
+    "typecheck": "npm run typecheck -w @rockscord/shared && npm run typecheck -w @rockscord/server && npm run typecheck -w @rockscord/web",
+    "desktop": "npm run dev -w @rockscord/desktop",
+    "smoke": "node scripts/smoke-test.mjs",
+    "icons": "node scripts/prepare-icons.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.9.3"
+  }
+}

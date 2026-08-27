@@ -1,0 +1,10 @@
+node_modules
+**/node_modules
+**/dist
+apps/desktop/build
+apps/desktop/release
+apps/desktop/resources
+data
+.git
+.env
+*.log

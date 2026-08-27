@@ -1,0 +1,19 @@
+{
+  "name": "@rockscord/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RocksCord desktop client with an embedded server.",
+  "type": "module",
+  "main": "build/main.cjs",
+  "scripts": {
+    "build": "node ../../scripts/build-desktop.mjs",
+    "dev": "npm run build && electron build/main.cjs",
+    "pack": "npm run build && electron-builder --dir --config electron-builder.yml",
+    "dist": "npm run build && electron-builder --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.25.0"
+  }
+}

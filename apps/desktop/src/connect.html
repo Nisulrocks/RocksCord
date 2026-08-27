@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <title>RocksCord — Choose a server</title>
+    <style>
+      /*
+       * Deliberately self-contained: no bundler, no fonts, no network. This page has to
+       * work before any server exists, which is the whole point of it.
+       * Palette mirrors the app's tokens so it does not feel like a different product.
+       */
+      :root {
+        --surface-0: #08090d;
+        --surface-2: #14161f;
+        --surface-3: #1a1d28;
+        --surface-4: #232733;
+        --line: #272b38;
+        --line-strong: #343a4b;
+        --ink: #e8eaf2;
+        --ink-dim: #9ba2b6;
+        --ink-faint: #6a7185;
+        --accent: #7c6cff;
+        --accent-soft: #8f82ff;
+        --online: #3ecf8e;
+        --danger: #f4526a;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 20px;
+        background: var(--surface-2);
+        color: var(--ink);
+        font: 15px/1.5 'Segoe UI', system-ui, -apple-system, sans-serif;
+        background-image:
+          radial-gradient(50rem 32rem at 10% -10%, #7c6cff22, transparent 60%),
+          radial-gradient(44rem 30rem at 110% 110%, #3fb6c922, transparent 60%);
+      }
+
+      .card {
+        width: 100%;
+        max-width: 460px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 22px;
+      }
+      .brand img { width: 40px; height: 40px; object-fit: contain; }
+      .brand span { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 20px;
+        font-weight: 600;
+        text-align: center;
+      }
+      .subtitle {
+        margin: 0 0 22px;
+        color: var(--ink-dim);
+        font-size: 14px;
+        text-align: center;
+      }
+
+      .panel {
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.6);
+      }
+
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ink-dim);
+      }
+
+      input {
+        width: 100%;
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface-0);
+        color: var(--ink);
+        font: inherit;
+        outline: none;
+      }
+      input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px #7c6cff55; }
+      input::placeholder { color: var(--ink-faint); }
+
+      .row { display: flex; gap: 8px; margin-top: 14px; }
+
+      button {
+        flex: 1;
+        padding: 11px 14px;
+        border: 0;
+        border-radius: 8px;
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.15s;
+      }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+      .primary { background: var(--accent); color: #fff; }
+      .primary:not(:disabled):hover { background: var(--accent-soft); }
+      .secondary { background: var(--surface-4); color: var(--ink); }
+      .secondary:not(:disabled):hover { background: var(--line-strong); }
+
+      .status {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        display: none;
+      }
+      .status.show { display: block; }
+      .status.ok { background: #3ecf8e1a; border: 1px solid #3ecf8e66; color: var(--online); }
+      .status.bad { background: #f4526a1a; border: 1px solid #f4526a66; color: var(--danger); }
+      .status.busy { background: var(--surface-3); border: 1px solid var(--line); color: var(--ink-dim); }
+
+      .divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 20px 0 16px;
+        color: var(--ink-faint);
+        font-size: 12px;
+      }
+      .divider::before, .divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+
+      .local {
+        width: 100%;
+        background: transparent;
+        border: 1px dashed var(--line-strong);
+        color: var(--ink-dim);
+        padding: 12px;
+      }
+      .local:hover { border-color: var(--accent); color: var(--accent-soft); }
+
+      .hint {
+        margin: 18px 0 0;
+        color: var(--ink-faint);
+        font-size: 12px;
+        line-height: 1.6;
+        text-align: center;
+      }
+      code {
+        background: var(--surface-3);
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="brand">
+        <img src="icon.png" alt="" width="40" height="40" />
+        <span>RocksCord</span>
+      </div>
+
+      <h1>Choose a server</h1>
+      <p class="subtitle">Connect to a shared server to chat with other people.</p>
+
+      <div class="panel">
+        <label for="url">Server address</label>
+        <input
+          id="url"
+          type="text"
+          spellcheck="false"
+          autocomplete="off"
+          placeholder="https://your-server.onrender.com"
+        />
+
+        <div class="row">
+          <button id="test" class="secondary">Test</button>
+          <button id="connect" class="primary">Connect</button>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div class="divider">or</div>
+
+        <button id="local" class="local">
+          Just use this computer (only you can join)
+        </button>
+
+        <p class="hint">
+          Everyone who wants to chat together must enter the <strong>same address</strong>.<br />
+          On the same Wi-Fi? Use <code>http://192.168.x.x:4000</code>
+        </p>
+      </div>
+    </div>
+
+    <script>
+      const urlInput = document.getElementById('url');
+      const testButton = document.getElementById('test');
+      const connectButton = document.getElementById('connect');
+      const localButton = document.getElementById('local');
+      const status = document.getElementById('status');
+
+      function show(kind, message) {
+        status.className = 'status show ' + kind;
+        status.textContent = message;
+      }
+
+      function busy(isBusy) {
+        testButton.disabled = isBusy;
+        connectButton.disabled = isBusy;
+        localButton.disabled = isBusy;
+      }
+
+      /** Accept "example.com" as well as a full URL, since people paste both. */
+      function normalise(value) {
+        const trimmed = value.trim().replace(/\/+$/, '');
+        if (!trimmed) return '';
+        return /^https?:\/\//i.test(trimmed) ? trimmed : 'http://' + trimmed;
+      }
+
+      async function probe() {
+        const url = normalise(urlInput.value);
+        if (!url) {
+          show('bad', 'Enter a server address first.');
+          return null;
+        }
+
+        busy(true);
+        show('busy', 'Checking ' + url + ' …');
+
+        const result = await window.rockscord.testServer(url);
+
+        busy(false);
+
+        if (!result.ok) {
+          show('bad', result.message);
+          return null;
+        }
+
+        show('ok', 'Reachable — RocksCord ' + result.version + ', database ' + result.database + '.');
+        return url;
+      }
+
+      testButton.addEventListener('click', () => void probe());
+
+      connectButton.addEventListener('click', async () => {
+        const url = await probe();
+        if (url) window.rockscord.useServer(url);
+      });
+
+      urlInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') connectButton.click();
+      });
+
+      localButton.addEventListener('click', () => window.rockscord.useLocal());
+
+      /*
+       * The preload bridge should always be present, but if this page is ever opened
+       * without it, fail loudly and legibly instead of throwing into a blank screen.
+       */
+      if (!window.rockscord) {
+        busy(true);
+        show('bad', 'This page must be opened by the RocksCord desktop app.');
+      } else {
+        // Prefill with whatever was configured last, and focus for immediate typing.
+        window.rockscord.getInfo().then((info) => {
+          if (info.remoteUrl) urlInput.value = info.remoteUrl;
+          urlInput.focus();
+          urlInput.select();
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,76 @@
+# electron-builder configuration.
+#
+# `directories.app` points at the staged app root produced by scripts/build-desktop.mjs,
+# which contains only main.mjs, preload.cjs, and the native modules. Nothing from the
+# monorepo (workspace symlinks, dev dependencies, source) is packaged.
+
+# Pinned explicitly: electron-builder needs an exact version to download the matching
+# platform binaries, and the workspace manifest carries a semver range.
+electronVersion: 44.0.0
+
+appId: dev.rockscord.desktop
+productName: RocksCord
+
+directories:
+  app: build
+  output: release
+  buildResources: assets
+
+# Everything else is already bundled into main.mjs by esbuild.
+files:
+  - '**/*'
+
+# Copied next to the packaged app rather than into the asar, so the server can read them
+# from `process.resourcesPath` at runtime.
+extraResources:
+  - from: resources/web
+    to: web
+  - from: resources/drizzle
+    to: drizzle
+
+# Native addons cannot be loaded from inside an asar archive; they must sit on disk.
+asarUnpack:
+  - '**/*.node'
+  - 'node_modules/libsql/**'
+  - 'node_modules/@libsql/**'
+  - 'node_modules/@node-rs/**'
+
+# The staged app root already contains exactly the dependencies we want.
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+
+win:
+  icon: assets/icon.png
+  target:
+    - target: portable
+    - target: nsis
+  # Unsigned builds are normal for a personal project; SmartScreen will warn on first run.
+  signAndEditExecutable: true
+
+portable:
+  # A single double-clickable file, which is the primary deliverable.
+  artifactName: RocksCord.exe
+  # Unpack to a stable folder so repeated launches reuse the same extraction.
+  unpackDirName: RocksCordPortable
+
+nsis:
+  artifactName: RocksCord-Setup-${version}.exe
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: RocksCord
+
+linux:
+  icon: assets/icon.png
+  target:
+    - AppImage
+  category: Network
+
+mac:
+  icon: assets/icon.png
+  target:
+    - dmg
+  category: public.app-category.social-networking

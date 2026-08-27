@@ -1,0 +1,86 @@
+# Render Blueprint — deploys RocksCord as a single free web service.
+#
+# Render's free tier is the one mainstream host that needs no credit card,
+# supports WebSockets, and stays free indefinitely.
+#
+# To use it:
+#   1. Push this repository to GitHub.
+#   2. On Render: New -> Blueprint, and point it at your repo.
+#   3. Fill in the two variables marked `sync: false` when prompted.
+#
+# Known free-tier limits (see the README for the full list):
+#   - the service sleeps after 15 minutes with no traffic; the next request
+#     takes ~50 seconds to wake it
+#   - 750 instance-hours per month across your whole workspace
+#   - NO persistent disk, which is why uploads must go to Supabase Storage
+#     and the database must be Turso rather than a local file
+
+services:
+  - type: web
+    name: rockscord
+    runtime: node
+    plan: free
+    region: oregon
+
+    # The build must produce the shared package, the server, and the client.
+    buildCommand: npm ci && npm run build
+
+    # `npm start` runs the compiled server, which also serves the built client.
+    startCommand: npm start
+
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Render provides PORT; the server reads it.
+      - key: HOST
+        value: 0.0.0.0
+
+      # Generated once by Render and kept stable across deploys, so people stay
+      # signed in when you ship an update.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Serve the built client from this same service — one free service total.
+      - key: SERVE_CLIENT
+        value: 'true'
+
+      # Required for the refresh cookie over HTTPS.
+      - key: COOKIE_SECURE
+        value: 'true'
+
+      # --- Fill these in when prompted -----------------------------------
+
+      # Your Turso database URL, e.g. libsql://rockscord-you.turso.io
+      #   turso db create rockscord && turso db show rockscord --url
+      - key: DATABASE_URL
+        sync: false
+
+      #   turso db tokens create rockscord
+      - key: DATABASE_AUTH_TOKEN
+        sync: false
+
+      # --- File uploads ---------------------------------------------------
+      # Free instances have no persistent disk, so uploads go to Supabase
+      # Storage. Create a PUBLIC bucket named `rockscord-uploads`, then set these.
+      # Leave STORAGE_DRIVER as `local` if you do not need file uploads —
+      # everything else works, uploaded files just disappear on restart.
+      - key: STORAGE_DRIVER
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: rockscord-uploads
+
+      # Set this to your Render URL after the first deploy, e.g.
+      # https://rockscord.onrender.com — attachment links are built from it.
+      - key: PUBLIC_URL
+        sync: false
+
+      # Lock this down to your own origin once you know the URL.
+      - key: CORS_ORIGIN
+        value: '*'

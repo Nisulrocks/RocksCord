@@ -1,0 +1,247 @@
+/**
+ * RocksCord design tokens and base styles.
+ *
+ * Tailwind v4 is configured here in CSS rather than in a JS config file. Every colour the
+ * app uses is a token in `@theme`, which means dark mode is not a set of overrides bolted
+ * on afterwards -- it is the palette, and a light theme is a token swap.
+ *
+ * The identity is deliberately its own: a violet/teal accent pair over cool near-blacks,
+ * rather than the blurple-on-grey that would just be a reskin of something else.
+ */
+
+@import 'tailwindcss';
+
+@theme {
+  /* Surfaces, from the deepest chrome outward to raised panels. */
+  --color-surface-0: #08090d; /* server rail */
+  --color-surface-1: #0e1016; /* channel sidebar */
+  --color-surface-2: #14161f; /* chat body */
+  --color-surface-3: #1a1d28; /* raised: cards, hovered rows */
+  --color-surface-4: #232733; /* highest: menus, modals, inputs */
+
+  --color-line: #272b38;
+  --color-line-strong: #343a4b;
+
+  --color-ink: #e8eaf2; /* primary text */
+  --color-ink-dim: #9ba2b6; /* secondary text */
+  --color-ink-faint: #6a7185; /* timestamps, placeholders */
+
+  /* The accent pair. Violet leads; teal is for secondary emphasis and voice. */
+  --color-accent: #7c6cff;
+  --color-accent-soft: #8f82ff;
+  --color-accent-deep: #5c4bd8;
+  --color-accent-wash: #7c6cff1f;
+  --color-teal: #3fb6c9;
+
+  --color-online: #3ecf8e;
+  --color-idle: #f0b232;
+  --color-dnd: #f4526a;
+  --color-offline: #6a7185;
+
+  --color-danger: #f4526a;
+  --color-danger-deep: #d13a52;
+  --color-warning: #f0b232;
+  --color-mention: #f0b23226;
+
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono',
+    monospace;
+
+  --radius-panel: 0.75rem;
+
+  --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 8px -2px rgb(0 0 0 / 0.4);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Base                                                                        */
+/* -------------------------------------------------------------------------- */
+
+* {
+  min-width: 0; /* stop flex children from refusing to shrink around long words */
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface-2);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* The app manages its own scroll regions; the page itself never scrolls. */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+::selection {
+  background: var(--color-accent-deep);
+  color: #fff;
+}
+
+/* Visible focus for keyboard users, invisible for mouse users. */
+:focus-visible {
+  outline: 2px solid var(--color-accent-soft);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Scrollbars                                                                  */
+/* -------------------------------------------------------------------------- */
+
+.scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+.scrollbar-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-slim::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.scrollbar-slim::-webkit-scrollbar-thumb:hover {
+  background: #454c60;
+  background-clip: content-box;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Animation                                                                   */
+/* -------------------------------------------------------------------------- */
+
+@keyframes rockscord-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rockscord-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rockscord-typing-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+@keyframes rockscord-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgb(62 207 142 / 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgb(62 207 142 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(62 207 142 / 0);
+  }
+}
+
+.animate-fade-in {
+  animation: rockscord-fade-in 0.16s ease-out;
+}
+.animate-pop-in {
+  animation: rockscord-pop-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.animate-speaking {
+  animation: rockscord-pulse-ring 1.4s ease-out infinite;
+}
+
+/* Respect the user's motion preference -- animations here are decorative, never load-bearing. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Message content                                                             */
+/* -------------------------------------------------------------------------- */
+
+.message-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.message-body code {
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+.message-body pre {
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+  margin: 0.4rem 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  line-height: 1.45;
+}
+
+.message-body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* A message containing only emoji renders them large, the way chat apps do. */
+.message-body.jumbo-emoji {
+  font-size: 2.75rem;
+  line-height: 1.15;
+}

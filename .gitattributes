@@ -1,0 +1,23 @@
+# Normalise line endings.
+#
+# This repo is written on Windows but built on Linux (Render, Docker), so text files are
+# stored with LF in the repository regardless of what the working copy uses. Without this,
+# CRLF can leak into shell scripts and Dockerfiles and break the build with errors that
+# look nothing like line-ending problems.
+
+* text=auto eol=lf
+
+# Windows batch files genuinely require CRLF; cmd.exe mis-parses LF-only files.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touch binaries.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.exe binary
+*.db binary
+*.node binary

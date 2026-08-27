@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+
+# Desktop packaging (staging + installers)
+apps/desktop/build/
+apps/desktop/resources/
+apps/desktop/release/
+
+# Local data: the SQLite database and uploaded files
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Secrets — .env.example IS committed, .env is not
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Tooling
+coverage/
+.vite/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
