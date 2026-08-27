@@ -57,8 +57,21 @@ export function VerifyEmailNotice({
     setError(null);
     setNotice(null);
     try {
-      await api.post('/api/auth/resend-verification', { email }, { skipRefresh: true });
-      setNotice('Sent. It usually arrives within a minute.');
+      /*
+       * Show the server's own wording rather than announcing success.
+       *
+       * A 200 here does not mean a message went out: the endpoint answers identically
+       * when the address is unknown, already verified, or still inside its cooldown, so
+       * that it cannot be used to test which addresses have accounts. Claiming "Sent."
+       * on the strength of that status code told people to go and wait for mail that was
+       * never dispatched.
+       */
+      const result = await api.post<{ message?: string }>(
+        '/api/auth/resend-verification',
+        { email },
+        { skipRefresh: true },
+      );
+      setNotice(result?.message ?? 'Request received. Any new link is on its way.');
       setCooldown(COOLDOWN_SECONDS);
     } catch (caught) {
       setError(

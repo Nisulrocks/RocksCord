@@ -161,7 +161,24 @@ npm run test:email -- you@example.com
 If `EMAIL_API_KEY` and `EMAIL_FROM` are not in your local `.env` (they normally live on
 the host, not your machine) it prompts for them. Nothing is stored.
 
-A rejection names the cause. The two common ones:
+A rejection names the cause. The one that catches almost everyone first:
+
+**HTTP 403 `Your SMTP account is not yet activated`**
+
+Brevo holds new accounts before allowing any transactional send. Your key is fine, your
+sender is fine, and RocksCord is fine -- Brevo is simply refusing. Nothing reaches anyone
+until it is lifted.
+
+To unblock it: open the **Transactional** page in the Brevo dashboard and look for an
+activation prompt. If there is none, email **contact@brevo.com** and tell them what you are
+sending -- transactional account-verification emails for a small chat app, low volume is
+enough. Approval usually takes a few hours to a day.
+
+While you wait, set `REQUIRE_EMAIL_VERIFICATION=false` on your host. Registration then signs
+people in immediately, exactly as it did before this feature, so nobody is locked out.
+Remove the variable once Brevo approves you and verification comes straight back.
+
+The other two:
 
 - **HTTP 401 `Key not found`** — bad key, or a brand-new Brevo account still held for
   review before it is allowed to send.

@@ -58,6 +58,23 @@ function explain(status, body, fromEmail) {
   const code = typeof body === 'object' && body ? String(body.code ?? '') : '';
   const message = typeof body === 'object' && body ? String(body.message ?? '') : String(body);
 
+  if (status === 403 || code === 'permission_denied') {
+    return [
+      yellow('Brevo has not activated this account for sending yet.'),
+      '  Nothing is wrong with your key, your sender, or RocksCord -- new accounts are',
+      '  held until Brevo approves them, and every send is refused until then.',
+      '',
+      `  ${bold('To unblock it:')}`,
+      '  1. Open the Transactional page in the Brevo dashboard and look for an',
+      '     "activate" or "request activation" prompt.',
+      '  2. If there is none, email contact@brevo.com and say what you are sending:',
+      '     transactional account-verification emails for a small chat app, low volume.',
+      '  3. Approval usually takes a few hours to a day.',
+      '',
+      '  In the meantime, set REQUIRE_EMAIL_VERIFICATION=false on your host so people',
+      '  can still sign up. Remove it once Brevo approves you.',
+    ];
+  }
   if (status === 401 || code === 'unauthorized') {
     return [
       yellow('The key was refused.'),
