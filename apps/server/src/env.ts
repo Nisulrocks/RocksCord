@@ -113,43 +113,33 @@ const schema = z.object({
   /**
    * Which transport delivers verification mail.
    *
-   *   auto     infer from whichever credentials are present (see below)
-   *   smtp2go  SMTP2GO API. No domain, no review queue, and HTTPS rather than SMTP
-   *   smtp     any SMTP relay, including Gmail. Blocked outright on some free hosts
-   *   brevo    Brevo transactional API. Free, but new accounts need activating
-   *   resend   Resend API. Excellent, but needs a domain to email anyone but yourself
+   *   auto     Brevo if EMAIL_API_KEY is set, otherwise `console`
+   *   brevo    Brevo transactional API
    *   console  print the link to the server log and send nothing
    *
    * `console` is what makes local development and the packaged desktop build work with
    * no account anywhere: the link is still generated, it just arrives in the log.
    */
-  EMAIL_DRIVER: z
-    .enum(['auto', 'smtp2go', 'smtp', 'brevo', 'resend', 'console'])
-    .default('auto'),
+  EMAIL_DRIVER: z.enum(['auto', 'brevo', 'console']).default('auto'),
 
-  /**
-   * API key for the HTTP providers. The prefix identifies which one:
-   * SMTP2GO `api-`, Resend `re_`, Brevo `xkeysib-`.
-   */
+  /** Brevo API key. Keys look like `xkeysib-…`. */
   EMAIL_API_KEY: z.string().default(''),
-  /** Must be an address the provider will accept as a sender. */
+  /** Must be an address confirmed as a sender with the provider. */
   EMAIL_FROM: z.string().default(''),
   EMAIL_FROM_NAME: z.string().default('RocksCord'),
 
-  /* SMTP. For Gmail: smtp.gmail.com / 587, and an app password, not the login one. */
-  SMTP_HOST: z.string().default(''),
-  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
-  SMTP_USER: z.string().default(''),
-  SMTP_PASSWORD: z.string().default(''),
-
   /**
-   * Whether an unverified account may sign in.
+   * Whether an unverified account is refused a sign-in.
    *
-   * Left unset it follows the transport: required when mail can actually be delivered,
-   * relaxed when it cannot. That default matters -- hard-coding `true` would lock every
-   * offline desktop user out of their own machine, since no link would ever arrive.
+   * Off unless switched on explicitly. Turn it on only once mail has been seen to arrive
+   * -- `npm run test:email` checks that -- because every free provider has some gate
+   * between "the key is accepted" and "the message is delivered", and enforcing on the
+   * strength of the former locks people out of their own accounts.
+   *
+   * Verification links are still generated and sent while this is off; they simply do not
+   * bar anyone from signing in.
    */
-  REQUIRE_EMAIL_VERIFICATION: booleanish.optional(),
+  REQUIRE_EMAIL_VERIFICATION: booleanish.default(false),
 
   /** How long a verification link stays valid. */
   EMAIL_VERIFICATION_TTL_SECONDS: z.coerce
@@ -228,31 +218,14 @@ function buildEnv(): Env {
   }
   env.PUBLIC_URL = env.PUBLIC_URL.replace(/\/+$/, '');
 
-  if (
-    (env.EMAIL_DRIVER === 'brevo' ||
-      env.EMAIL_DRIVER === 'resend' ||
-      env.EMAIL_DRIVER === 'smtp2go') &&
-    !env.EMAIL_API_KEY
-  ) {
-    throw new Error(`EMAIL_DRIVER=${env.EMAIL_DRIVER} requires EMAIL_API_KEY to be set.`);
+  if (env.EMAIL_DRIVER === 'brevo' && !env.EMAIL_API_KEY) {
+    throw new Error('EMAIL_DRIVER=brevo requires EMAIL_API_KEY to be set.');
   }
 
-  if (env.EMAIL_DRIVER === 'smtp' && (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASSWORD)) {
+  if (env.EMAIL_API_KEY && !env.EMAIL_FROM) {
     throw new Error(
-      'EMAIL_DRIVER=smtp requires SMTP_HOST, SMTP_USER and SMTP_PASSWORD to be set.',
-    );
-  }
-
-  // An SMTP login is almost always the sending address, so default it rather than
-  // failing on a variable the operator has effectively already supplied.
-  if (!env.EMAIL_FROM && env.SMTP_USER.includes('@')) {
-    env.EMAIL_FROM = env.SMTP_USER;
-  }
-
-  if (!env.EMAIL_FROM && (env.EMAIL_API_KEY || env.SMTP_HOST)) {
-    throw new Error(
-      'EMAIL_FROM is required when an email provider is configured. Use the address the ' +
-        'provider accepts as a sender, e.g. EMAIL_FROM=you@gmail.com',
+      'EMAIL_FROM is required when an email provider is configured. Use the address you ' +
+        'confirmed as a sender with the provider, e.g. EMAIL_FROM=you@gmail.com',
     );
   }
 

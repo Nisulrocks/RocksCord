@@ -346,10 +346,9 @@ these are the ones that matter.
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS |
 | `CORS_ORIGIN` | `*` | Comma-separated allowed origins |
 | `ALLOW_REGISTRATION` | `true` | Set `false` to close signups |
-| `EMAIL_API_KEY` | — | SMTP2GO (`api-…`), Resend (`re_…`) or Brevo (`xkeysib-…`) key. Setting it turns verification on |
-| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASSWORD` | — | Any SMTP relay, as an alternative. Blocked on some free hosts |
-| `EMAIL_FROM` | `SMTP_USER` | Sender address the provider will accept |
-| `REQUIRE_EMAIL_VERIFICATION` | inferred | Follows whether mail can be delivered; set to override |
+| `REQUIRE_EMAIL_VERIFICATION` | `false` | Whether unverified accounts are refused a sign-in |
+| `EMAIL_API_KEY` | — | Brevo key (`xkeysib-…`). Sends links; does not enforce on its own |
+| `EMAIL_FROM` | — | Sender address confirmed with Brevo |
 | `TURN_URL` | — | Optional TURN relay for restrictive networks |
 
 ---
@@ -569,38 +568,38 @@ Railway, a VPS).
 | XSS | Messages are parsed into tokens and rendered as React elements. `innerHTML` is never used, so injected markup is text by construction rather than by sanitising. |
 | SQL injection | Every query is parameterised through Drizzle. FTS5 search terms are escaped into literal phrases. |
 | Uploads | The real type is sniffed from the file's bytes; a declared `Content-Type` is never trusted. Filenames are stripped of paths, traversal, and Windows device names. Non-media downloads instead of rendering, with `nosniff` and a restrictive CSP. |
-| Email verification | Registration issues no session until the address is confirmed. Links are 256-bit tokens stored only as SHA-256 hashes, single-use, expiring in 24 hours, and invalidated when a newer one is sent or when the account's address changes. |
+| Email verification | Optional, off by default. When on, registration issues no session until the address is confirmed. Links are 256-bit tokens stored only as SHA-256 hashes, single-use, expiring in 24 hours, and invalidated when a newer one is sent or when the account's address changes. |
 | Rate limiting | Per-user when authenticated, per-IP otherwise. Tight limits on login, registration, password change, uploads, and sending. |
 | Input | Every request body is validated with Zod. Invisible, control, and bidirectional-override characters are stripped from user text. |
 
 ### Email verification
 
-Registration returns **no session**. The account exists, but until the address is
-confirmed there is nothing to sign in with, and `/api/auth/login` answers `403
-EMAIL_NOT_VERIFIED` — checked *after* the password, so it cannot be used to discover which
-addresses are registered.
+Built, tested, and **switched off**. Registration signs people straight in.
 
-Configure a provider and it switches itself on:
+Free transactional email has a gate in front of every option, and none are visible until
+you try to send: Brevo holds new accounts for manual approval, Resend needs a domain or it
+delivers only to its own account holder, and Render's free tier
+[blocks outbound SMTP entirely](https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports).
+
+So enforcement is an explicit switch rather than something inferred from configuration:
 
 ```bash
-EMAIL_API_KEY=api-your-smtp2go-key
-EMAIL_FROM=an-address-you-verified@example.com
+EMAIL_API_KEY=xkeysib-...              # Brevo. Links are sent, nobody is barred yet
+EMAIL_FROM=your-confirmed@sender.com
+REQUIRE_EMAIL_VERIFICATION=true        # only after `npm run test:email` lands in an inbox
 ```
 
-Four transports are supported and the driver is inferred from the credentials. SMTP2GO is
-the recommended one, because free email hosting has two traps that eliminate the obvious
-choices: Render's free tier blocks outbound SMTP entirely (so Gmail relaying cannot work
-there), and Resend without a verified domain delivers only to its own account holder.
-SMTP2GO needs one confirmed sender address, no domain, and speaks HTTPS.
-[docs/EMAIL.md](docs/EMAIL.md) compares all four.
+That ordering is the point. "A key was accepted" and "a message was delivered" are
+different claims, and enforcing on the first locked people out of their own accounts when
+the second turned out false.
 
-With no provider configured, the transport falls back to printing the link to the server
-log and verification is **not** enforced. That is not a loophole, it is the only coherent
-behaviour for an offline desktop install: demanding a click on a link that can never be
-delivered would lock someone out of their own machine permanently. `REQUIRE_EMAIL_VERIFICATION`
-overrides the inference in either direction.
+With it on: registration issues **no session**, and `/api/auth/login` answers `403
+EMAIL_NOT_VERIFIED` — checked *after* the password, so it cannot reveal which addresses are
+registered. Links are single-use, expire in 24 hours, stored only as SHA-256 hashes, and
+retired when a newer one is issued or the account's address changes.
 
-[docs/EMAIL.md](docs/EMAIL.md) walks through the provider setup.
+With no provider at all, links print to the server log, which is how to exercise the flow
+locally. [docs/EMAIL.md](docs/EMAIL.md) covers all of it.
 
 **Still not production-hardened**: no password reset, no 2FA, no CAPTCHA, and no moderation
 tooling beyond kick/ban/audit log. Those are listed under
@@ -635,11 +634,10 @@ tooling beyond kick/ban/audit log. Those are listed under
   older ones are re-fetched on scroll. Fine in practice, but not a virtualised list.
 - **Light theme is not implemented.** The palette is entirely CSS custom properties in one
   file, so it is a token swap rather than a rewrite — but it is not done.
-- **Verification mail can land in spam.** A brand-new sender has no reputation, so the
-  first message to a given provider often gets filtered. The sign-in screen says so, and
-  the resend button is one click — but it is a real cost of a free tier with no domain.
-- **300 verification emails per day** on Brevo's free tier, shared with anything else you
-  send from that account.
+- **Email verification is off.** The feature is complete and tested, but every free
+  provider gates sending behind something — manual account approval, a domain you must
+  own, or an SMTP port the host blocks — so nothing is enforced until one of them actually
+  delivers. See [docs/EMAIL.md](docs/EMAIL.md).
 - **The executable is unsigned**, so Windows SmartScreen shows a warning on first run
   ("More info" → "Run anyway"). Code-signing certificates cost money.
 

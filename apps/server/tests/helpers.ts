@@ -23,6 +23,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { createDb, type Database, type DbHandle } from '../src/db/index.js';
+import { env } from '../src/env.js';
 import { buildApp } from '../src/app.js';
 import type { AppContext } from '../src/context.js';
 import { resetPresence } from '../src/realtime/presence.js';
@@ -65,10 +66,10 @@ export function createMemoryStorage(): StorageDriver & { files: Map<string, Buff
 /**
  * A capturing email driver.
  *
- * `canDeliver: true` is the significant part: it is what makes the server treat email
- * verification as required, exactly as a real provider would. Tests that do not install
- * this driver fall through to the console transport, which cannot deliver, so verification
- * stays off and every pre-existing test keeps its original register-and-sign-in behaviour.
+ * Installing it is half of what `{ email: true }` does; the other half is switching
+ * `REQUIRE_EMAIL_VERIFICATION` on, since enforcement is now an explicit decision rather
+ * than something inferred from a provider looking configured. Tests that do neither keep
+ * their original register-and-sign-in behaviour.
  */
 export function createMemoryEmail(): EmailDriver & {
   sent: EmailMessage[];
@@ -106,7 +107,7 @@ interface BuildOptions {
    * entirely — a gap that once hid a bug where serving an existing file hung forever.
    */
   realStorage?: boolean;
-  /** Install a capturing email driver, which also switches verification on. */
+  /** Install a capturing email driver and require verification. */
   email?: boolean;
 }
 
@@ -125,6 +126,8 @@ async function build(listen: boolean, options: BuildOptions = {}): Promise<TestA
 
   const mail = options.email ? createMemoryEmail() : null;
   setEmailDriver(mail);
+  // Enforcement is explicit, so the harness has to ask for it as well as for a transport.
+  env.REQUIRE_EMAIL_VERIFICATION = Boolean(options.email);
 
   if (options.realStorage) {
     // null = fall through to the configured driver, which is `local`.
@@ -159,6 +162,7 @@ async function build(listen: boolean, options: BuildOptions = {}): Promise<TestA
       await built.close();
       await handle.close();
       setEmailDriver(null);
+      env.REQUIRE_EMAIL_VERIFICATION = false;
       // Presence and voice are module-level singletons; clear them so the next file
       // does not inherit "online" users from this one.
       resetPresence();

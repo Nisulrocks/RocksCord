@@ -12,9 +12,6 @@
 
 import { env } from '../../env.js';
 import { createBrevoDriver } from './brevo.js';
-import { createResendDriver } from './resend.js';
-import { createSmtpDriver } from './smtp.js';
-import { createSmtp2goDriver } from './smtp2go.js';
 import {
   verificationHtml,
   verificationSubject,
@@ -69,63 +66,47 @@ export function getEmailDriver(): EmailDriver {
   return resolved;
 }
 
+type DriverName = 'brevo' | 'console';
+
 /**
  * Work out which transport to use.
  *
- * `auto` reads the credentials rather than asking for the provider's name twice. SMTP
- * wins when configured because it is the only option with no approval queue and no domain
- * requirement, so an operator who has bothered to set it up wants it used. Between the two
- * HTTP providers the key itself is unambiguous: Resend issues `re_...`, Brevo `xkeysib-...`.
+ * `auto` reads the credentials rather than asking for the provider's name twice: a key
+ * means Brevo, no key means the log.
  */
-type DriverName = 'smtp2go' | 'smtp' | 'brevo' | 'resend' | 'console';
-
 function resolveDriverName(): DriverName {
   if (env.EMAIL_DRIVER !== 'auto') return env.EMAIL_DRIVER;
-  /*
-   * An API key wins over SMTP when both are present. SMTP is the more fragile of the two
-   * in practice -- several free hosts block outbound SMTP ports entirely -- so an
-   * operator who has configured both almost certainly added the key second, to fix that.
-   */
-  if (env.EMAIL_API_KEY.startsWith('api-')) return 'smtp2go';
-  if (env.EMAIL_API_KEY.startsWith('re_')) return 'resend';
-  if (env.EMAIL_API_KEY) return 'brevo';
-  if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASSWORD) return 'smtp';
-  return 'console';
+  return env.EMAIL_API_KEY ? 'brevo' : 'console';
 }
 
 function createDriver(name: DriverName): EmailDriver {
-  const from = { fromEmail: env.EMAIL_FROM, fromName: env.EMAIL_FROM_NAME };
-
-  switch (name) {
-    case 'smtp2go':
-      return createSmtp2goDriver({ apiKey: env.EMAIL_API_KEY, ...from });
-    case 'smtp':
-      return createSmtpDriver({
-        host: env.SMTP_HOST,
-        port: env.SMTP_PORT,
-        user: env.SMTP_USER,
-        password: env.SMTP_PASSWORD,
-        ...from,
-      });
-    case 'brevo':
-      return createBrevoDriver({ apiKey: env.EMAIL_API_KEY, ...from });
-    case 'resend':
-      return createResendDriver({ apiKey: env.EMAIL_API_KEY, ...from });
-    default:
-      return createConsoleDriver((line) => console.log(line));
+  if (name === 'brevo') {
+    return createBrevoDriver({
+      apiKey: env.EMAIL_API_KEY,
+      fromEmail: env.EMAIL_FROM,
+      fromName: env.EMAIL_FROM_NAME,
+    });
   }
+  return createConsoleDriver((line) => console.log(line));
 }
 
 /**
  * Whether an account must confirm its address before it can sign in.
  *
- * An explicit `REQUIRE_EMAIL_VERIFICATION` always wins. Otherwise it tracks whether mail
- * can be delivered at all, so a deployment with a provider enforces it and an offline
- * install does not.
+ * Off unless `REQUIRE_EMAIL_VERIFICATION` explicitly turns it on -- deliberately a single
+ * switch rather than something inferred from the configuration.
+ *
+ * It used to follow whether a provider looked usable, which was wrong in the way that
+ * matters: "a key is present" and "this provider will actually deliver" are different
+ * claims, and every free provider has some gate between them -- an account awaiting
+ * manual approval, a domain requirement, a host blocking the port. Inferring from the
+ * former locked people out of their own accounts whenever the latter turned out false.
+ *
+ * Turning it on is therefore a decision made after mail has been seen to arrive, not a
+ * side effect of pasting a key. `npm run test:email` is how you check.
  */
 export function emailVerificationRequired(): boolean {
-  if (env.REQUIRE_EMAIL_VERIFICATION !== undefined) return env.REQUIRE_EMAIL_VERIFICATION;
-  return getEmailDriver().canDeliver;
+  return env.REQUIRE_EMAIL_VERIFICATION === true;
 }
 
 /** Human-readable form of the link lifetime, for the email body. */

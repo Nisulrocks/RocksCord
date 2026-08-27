@@ -95,35 +95,16 @@ Free tier, no card, and WebSockets work on it.
 > stick around, add free Supabase Storage — [DEPLOYMENT.md](DEPLOYMENT.md#step-2--file-storage-supabase)
 > covers it in five minutes. You can add it later.
 
-### A3b. Turn on email verification (optional, 10 minutes)
+### A3b. Email verification (skip this)
 
-Without this, anyone can register with a made-up address like `a@b.c` and be signed in
-immediately. With it, an account cannot sign in until its owner clicks a link.
+Anyone can register with a made-up address like `a@b.c` and be signed in immediately. That
+is the current behaviour, and for a server you are sharing with friends it is fine.
 
-1. Sign up at **[brevo.com](https://www.brevo.com)** — free, 300 emails a day, no card.
-2. **Senders → Add a sender**, use your own Gmail address, and click the link Brevo sends
-   you.
-3. **SMTP & API → API Keys → Generate a new API key**, and copy it.
-4. On Render: your service → **Environment** → add two variables, then save.
-
-   | Key | Value |
-   |---|---|
-   | `EMAIL_API_KEY` | the key from step 3 |
-   | `EMAIL_FROM` | the address you verified in step 2 |
-
-Render restarts the service by itself. Check it took:
-
-```
-https://your-app.onrender.com/api/auth/config
-```
-
-`"requireEmailVerification":true` means it is live.
-
-> Tell your friends to check their spam folder. A brand-new sender with no domain has no
-> reputation, so the first message often gets filtered. The app's own screen says this too,
-> and the resend button is one click.
-
-See [EMAIL.md](EMAIL.md) for the details.
+Verification is fully built and can be switched on later, but every free provider gates
+sending behind something — Brevo holds new accounts for manual approval, Resend needs a
+domain you own, and Render's free tier blocks outbound SMTP — so there is nothing to set up
+today that will reliably deliver. [EMAIL.md](EMAIL.md) has the whole picture and the steps
+for when one of them comes good.
 
 ### A4. Build the exe that points at it
 
@@ -163,8 +144,8 @@ Tell your friends two things:
 
 They open it, register an account, and they are in your server with you.
 
-If you set up email verification, add a third thing: they will need to click the link in
-the confirmation email before they can sign in, and it may land in spam.
+If you have switched email verification on, add a third thing: they will need to click the
+link in the confirmation email before they can sign in, and it may land in spam.
 
 ---
 
@@ -250,11 +231,11 @@ address is wrong. On Render, check the service is not suspended.
 Render's free tier sleeps after 15 minutes with no traffic. The first person in wakes it.
 Ask someone to open the URL a minute before everyone joins, or upgrade to remove it.
 
-**A friend never got their confirmation email**
-Check spam first — that is nearly always it. The app's "check your inbox" screen has a
-**Resend** button. If nothing arrives at all, open the Render logs and look for a line about
-Brevo rejecting the message; it usually means `EMAIL_FROM` is not the sender address you
-verified.
+**A friend was asked to confirm an email address**
+Verification is off by default, so this only happens if you set
+`REQUIRE_EMAIL_VERIFICATION=true`. If mail is not actually being delivered, unset it — the
+app will then sign people in directly, and anyone stranded unverified can sign in again.
+[EMAIL.md](EMAIL.md) covers checking delivery before turning it on.
 
 **A friend sees an empty app with no servers**
 That is correct — accounts are shared, but they still need to be invited to a *server*

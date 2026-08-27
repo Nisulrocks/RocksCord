@@ -3,13 +3,12 @@
  *
  * Two harnesses run side by side here, and the split is the point:
  *
- *   `{ email: true }`  installs a driver that reports it can deliver, so the server
- *                      enforces verification — the deployed configuration.
- *   plain harness      falls through to the console transport, which cannot deliver, so
- *                      verification is off — the offline desktop configuration.
+ *   `{ email: true }`  a working transport and `REQUIRE_EMAIL_VERIFICATION` on — what a
+ *                      deployment looks like once mail has been seen to arrive.
+ *   plain harness      neither — the default, and what the packaged desktop build runs.
  *
- * Both are shipped, so both are tested. The second suite exists to prove that adding this
- * feature did not quietly break the install that has no email provider at all.
+ * Both are shipped, so both are tested. The second suite exists to prove that the feature
+ * stays entirely out of the way when it is switched off.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -307,7 +306,7 @@ describe('with an email provider configured', () => {
 
 /* -------------------------------------------------------------------------- */
 
-describe('with no email provider configured', () => {
+describe('with verification switched off', () => {
   let test: TestApp;
 
   beforeEach(async () => {
@@ -325,7 +324,7 @@ describe('with no email provider configured', () => {
       payload: { email, username, password: 'correct horse battery' },
     });
 
-  it('signs the user in immediately, because no link could ever arrive', async () => {
+  it('signs the user in immediately', async () => {
     const response = await register('offline@test.local', 'offline');
 
     expect(response.statusCode).toBe(201);
@@ -333,18 +332,18 @@ describe('with no email provider configured', () => {
     expect(response.json().user.emailVerified).toBe(true);
   });
 
-  it('marks the account verified in the database rather than leaving it in limbo', async () => {
+  it('marks the account verified rather than leaving it in limbo', async () => {
     await register('limbo@test.local', 'limbo');
 
     const [row] = await test.db.select().from(users).where(eq(users.email, 'limbo@test.local'));
     /*
-     * Otherwise switching a provider on later would strand every account created before
+     * Otherwise switching verification on later would strand every account created before
      * it, since no verification row exists for them to confirm against.
      */
     expect(row!.emailVerifiedAt).not.toBeNull();
   });
 
-  it('reports the requirement as off', async () => {
+  it('advertises the requirement as off', async () => {
     const response = await test.app.inject({ method: 'GET', url: '/api/auth/config' });
     expect(response.json().requireEmailVerification).toBe(false);
   });

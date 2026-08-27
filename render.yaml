@@ -66,39 +66,27 @@ services:
 
       # --- Email verification ---------------------------------------------
       #
-      # Leave these blank and the service still deploys: registration then signs people
-      # straight in, exactly as it did before, because no link could be delivered.
+      # Off unless REQUIRE_EMAIL_VERIFICATION is set to true. Registration signs people
+      # straight in by default, which is a deliberate choice rather than an oversight:
+      # every free provider has some gate between "the key was accepted" and "the message
+      # was delivered", and enforcing sign-in before mail has actually been seen to arrive
+      # produces accounts that can never sign in and never receive the link that would fix
+      # them.
       #
-      # Use SMTP2GO. Free instances here block outbound SMTP on ports 25, 465 and 587, so
-      # no SMTP relay -- Gmail's included -- can work on this plan whatever the
-      # credentials. That leaves providers with an HTTPS API, and of those, SMTP2GO is the
-      # only free one that will send to arbitrary recipients without a verified domain and
-      # without waiting on manual account approval.
+      # To turn it on: sign up at https://app.brevo.com (free, 300/day, no card, no
+      # domain), confirm a sender address, set the two variables below, then run
+      # `npm run test:email -- you@example.com` locally. Only once that lands in an inbox,
+      # add REQUIRE_EMAIL_VERIFICATION=true here.
       #
-      # Sign up at https://www.smtp2go.com, confirm a single sender address under
-      # Sending > Verified Senders, then create an API key and set both of these in the
-      # Render dashboard. No redeploy is needed -- Render restarts on a variable change.
-      #
-      # Resend (re_...) and Brevo (xkeysib-...) keys also work here; the driver is chosen
-      # from the prefix. Read docs/EMAIL.md first -- both have a catch.
+      # Brevo holds new accounts for manual approval and answers HTTP 403 until it agrees,
+      # so this may not be possible immediately.
       - key: EMAIL_API_KEY
         sync: false
-      # The sender address confirmed with the provider.
+      # Must match the sender address confirmed with Brevo.
       - key: EMAIL_FROM
         sync: false
       - key: EMAIL_FROM_NAME
         value: RocksCord
-
-      # SMTP is supported for hosts that allow it, and for local use. It is left unset
-      # here because it cannot work on a free instance.
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: '587'
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
 
       # --- File uploads ---------------------------------------------------
       #

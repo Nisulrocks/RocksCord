@@ -92,21 +92,17 @@ Free tier: 1 GB storage, 5 GB egress/month, no card.
 
 ---
 
-## Step 2b — Email verification (Brevo)
+## Step 2b — Email verification (optional, and off by default)
 
-**Optional, but it is what makes accounts real.** Without it, anyone can register with
-`a@b.c` and be signed in immediately.
+Registration signs people straight in. Verification is built and tested but not enforced,
+because every free provider gates sending behind something that is not visible until you
+try: Brevo holds new accounts for manual approval, Resend needs a domain you own, and
+Render's free instances block outbound SMTP entirely.
 
-Free tier: 300 messages/day, no card, no domain required.
-
-1. Sign up at **[brevo.com](https://www.brevo.com)**.
-2. **Senders, Domains & Dedicated IPs → Senders → Add a sender.** Use an address you can
-   open (your own Gmail is fine) and click the link Brevo emails you. This is the step that
-   lets you send without owning a domain.
-3. **SMTP & API → API Keys → Generate a new API key.** Copy it — it is shown once.
-
-These become `EMAIL_API_KEY` and `EMAIL_FROM`. Full walkthrough, including how the flow
-behaves with no provider at all: **[EMAIL.md](EMAIL.md)**.
+If you want it, **[EMAIL.md](EMAIL.md)** covers getting Brevo sending, proving delivery
+with `npm run test:email`, and only then setting `REQUIRE_EMAIL_VERIFICATION=true`. That
+order matters: enforcing before mail has been seen to arrive creates accounts that can
+never sign in.
 
 ---
 
@@ -128,12 +124,11 @@ behaves with no provider at all: **[EMAIL.md](EMAIL.md)**.
    | `DATABASE_AUTH_TOKEN` | the Turso token |
    | `SUPABASE_URL` | your Supabase project URL, or blank |
    | `SUPABASE_SERVICE_KEY` | the `service_role` key, or blank |
-   | `EMAIL_API_KEY` | your Brevo API key, or blank |
-   | `EMAIL_FROM` | the sender address you verified with Brevo, or blank |
+   | `EMAIL_API_KEY` | blank — see step 2b |
+   | `EMAIL_FROM` | blank — see step 2b |
 
-   Leaving the email fields blank is fine — verification then stays off and registration
-   signs people straight in. Add them later from **Environment** and it switches on with
-   no redeploy.
+   Leaving the email fields blank is expected. Verification is off regardless until
+   `REQUIRE_EMAIL_VERIFICATION=true` is set.
 
    If you filled in the Supabase keys, also change `STORAGE_DRIVER` to `supabase` in
    **Environment**. It defaults to `local` so a first deploy cannot fail on missing keys.
@@ -219,8 +214,7 @@ remembered in `%APPDATA%\RocksCord\config.json`.
 | Turso: 500M reads / 10M writes per month | Far beyond a demo's needs | — |
 | Supabase pauses after 7 days idle | Uploads 500 until unpaused | Open the dashboard to unpause |
 | Supabase: 1 GB storage | ~125 files at the 8 MB cap | Delete old uploads |
-| Brevo: 300 emails/day | ~300 new accounts/day | Far beyond a demo's needs |
-| New sender has no reputation | First verification email often lands in spam | Tell testers to check spam; the app says so too |
+| No free provider will reliably send mail | Email verification stays off | Registration signs people in directly; see [EMAIL.md](EMAIL.md) |
 
 **Keeping it awake:** a free [UptimeRobot](https://uptimerobot.com) monitor pinging
 `/health` every 5 minutes prevents sleep — but it also burns your 750 hours in ~21 days.
