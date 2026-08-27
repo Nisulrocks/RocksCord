@@ -488,8 +488,14 @@ internet connection.
 The splash is not decoration. When the app points at a free-tier host, the server may be
 asleep and take ~50 seconds to answer; after 8 seconds of silence the splash says so
 explicitly, which is the difference between someone waiting and someone deciding the app
-is broken. It is dismissed on the main window's `ready-to-show`, so it never uncovers a
-half-painted window.
+is broken.
+
+Crucially, remote mode polls `/health` *before* navigating, and only accepts a JSON
+`{"status":"ok"}` as proof the server is up. A sleeping host answers the first request
+with its own branded holding page -- HTTP 200, valid HTML, paints instantly -- which would
+otherwise satisfy `ready-to-show` and pull the splash away to reveal someone else's
+loading screen. Waiting on the health check keeps the whole wake behind the splash. When
+the server is already warm this costs one round trip, so a normal launch is unaffected.
 
 Its data lives in `%APPDATA%\RocksCord\`:
 
@@ -516,7 +522,9 @@ Also available, without rebuilding:
 - **File → Connect to a different server…** in the app — paste an address, test it, connect
 - `RocksCord.exe --server=https://your-app.onrender.com` on the command line
 
-Either way the choice is remembered. See **[docs/SHARING.md](docs/SHARING.md)**.
+The menu choice is remembered. The command-line flag applies to that launch only, and is
+deliberately never written to `config.json` -- testing against another address should not
+silently become the app's permanent server. See **[docs/SHARING.md](docs/SHARING.md)**.
 
 ### Faster builds while iterating
 

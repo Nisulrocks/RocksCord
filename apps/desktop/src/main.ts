@@ -273,6 +273,13 @@ function closeSplash(): void {
  * wake. Naming that turns "this app is broken" into "this app is waiting", which is the
  * difference between someone waiting and someone force-quitting.
  */
+function disarmColdStartHint(): void {
+  if (coldStartTimer) {
+    clearTimeout(coldStartTimer);
+    coldStartTimer = null;
+  }
+}
+
 function armColdStartHint(): void {
   if (coldStartTimer) clearTimeout(coldStartTimer);
   coldStartTimer = setTimeout(() => {
@@ -284,12 +291,75 @@ function armColdStartHint(): void {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Waiting for a sleeping host                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** Give up waiting and try to load anyway, so a real outage still reaches the error UI. */
+const SERVER_WAKE_TIMEOUT_MS = 150_000;
+const SERVER_POLL_INTERVAL_MS = 1_500;
+/** Per-attempt cap. A sleeping host accepts the connection and then just sits there. */
+const HEALTH_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * Block until the server is genuinely serving RocksCord.
+ *
+ * This exists because "the page loaded" is not the same question as "the app is up". A
+ * host whose service is asleep answers the very first request with its own branded
+ * holding page -- HTTP 200, valid HTML, paints immediately -- which fires `ready-to-show`
+ * and would otherwise dismiss the splash onto somebody else's loading screen.
+ *
+ * `/health` separates the two cleanly: RocksCord answers it with `{"status":"ok"}` as
+ * JSON, and a holding page cannot, whatever status code it returns. Requesting it is also
+ * what wakes the service, so the wait happens behind the splash rather than in front of
+ * the user.
+ */
+async function waitForServerAwake(baseUrl: string): Promise<boolean> {
+  const deadline = Date.now() + SERVER_WAKE_TIMEOUT_MS;
+  let attempts = 0;
+
+  while (Date.now() < deadline) {
+    attempts += 1;
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), HEALTH_REQUEST_TIMEOUT_MS);
+
+      const response = await fetch(`${baseUrl}/health`, {
+        signal: controller.signal,
+        headers: { accept: 'application/json' },
+        cache: 'no-store',
+      });
+      clearTimeout(timer);
+
+      if (response.ok) {
+        // Parsed rather than pattern-matched: an interstitial that happens to mention
+        // "ok" in its markup must not read as a healthy server.
+        const body = (await response.json().catch(() => null)) as { status?: string } | null;
+        if (body?.status === 'ok') {
+          log.info(`server healthy after ${attempts} attempt(s)`);
+          return true;
+        }
+      }
+    } catch {
+      // Refused, timed out, or DNS still cold. Any of these just means "not yet".
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, SERVER_POLL_INTERVAL_MS));
+  }
+
+  log.warn(`server never reported healthy after ${attempts} attempt(s)`);
+  return false;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Window                                                                      */
 /* -------------------------------------------------------------------------- */
 
 let mainWindow: BrowserWindow | null = null;
 let server: RunningServer | null = null;
 let config = loadConfig();
+/** True when this launch came from `--server=`, whose choice must not be persisted. */
+let launchedWithServerOverride = false;
 
 function createWindow(targetUrl: string): BrowserWindow {
   const bounds = config.windowBounds ?? { width: 1280, height: 820 };
@@ -317,6 +387,15 @@ function createWindow(targetUrl: string): BrowserWindow {
     },
   });
 
+  /*
+   * Keep the window and taskbar saying "RocksCord".
+   *
+   * Chromium adopts whatever <title> the loaded page carries, so an interstitial served
+   * by the host would rename the app in the taskbar. The client never sets a title of its
+   * own, so there is nothing legitimate being suppressed here.
+   */
+  window.on('page-title-updated', (event) => event.preventDefault());
+
   // Avoid a flash of empty window while the SPA boots. The splash covers this gap, and
   // is only dismissed once there is something real to replace it with.
   window.once('ready-to-show', () => {
@@ -326,11 +405,22 @@ function createWindow(targetUrl: string): BrowserWindow {
   });
 
   window.on('close', () => {
-    if (!window.isDestroyed()) {
-      const { width, height, x, y } = window.getBounds();
-      config = { ...config, windowBounds: { width, height, x, y } };
-      saveConfig(config);
-    }
+    if (window.isDestroyed()) return;
+
+    const { width, height, x, y } = window.getBounds();
+    const windowBounds = { width, height, x, y };
+    config = { ...config, windowBounds };
+
+    /*
+     * `--server=` is documented as winning for one launch only, and it has to actually
+     * behave that way: saving the whole in-memory config here would quietly write the
+     * override to disk, so a single test run against another address would become the
+     * app's permanent server. Re-reading what is on disk keeps the flag ephemeral while
+     * still remembering where the window was.
+     */
+    saveConfig(
+      launchedWithServerOverride ? { ...loadConfig(), windowBounds } : config,
+    );
   });
 
   window.on('closed', () => {
@@ -375,7 +465,12 @@ function createWindow(targetUrl: string): BrowserWindow {
         openSplash();
         setSplashStatus('Retrying…');
         armColdStartHint();
-        void window.loadURL(targetUrl);
+        // Same reasoning as the first load: reach the app, not an interstitial.
+        void waitForServerAwake(targetUrl).then(() => {
+          disarmColdStartHint();
+          setSplashStatus('Loading RocksCord…');
+          void window.loadURL(targetUrl);
+        });
       } else {
         app.quit();
       }
@@ -598,6 +693,7 @@ if (!gotLock) {
     const remoteOverride = remoteFromArgv();
 
     if (remoteOverride) {
+      launchedWithServerOverride = true;
       config = { ...config, mode: 'remote', remoteUrl: remoteOverride, chosen: true };
     } else if (!config.chosen && BAKED_SERVER_URL) {
       log.info(`using the server baked in at build time: ${BAKED_SERVER_URL}`);
@@ -630,6 +726,14 @@ if (!gotLock) {
         }
         setSplashStatus(`Connecting to ${host}…`);
         armColdStartHint();
+
+        /*
+         * Wait here, not in the window. Navigating first would paint the host's own
+         * "service is waking up" page, which counts as the window being ready and pulls
+         * the splash away to reveal it.
+         */
+        await waitForServerAwake(targetUrl);
+        disarmColdStartHint();
       } else {
         log.info('starting embedded server');
         setSplashStatus('Starting the local server…');
