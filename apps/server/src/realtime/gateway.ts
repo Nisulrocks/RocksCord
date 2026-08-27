@@ -212,6 +212,9 @@ async function buildReadyPayload(db: Database, userId: string): Promise<ReadyPay
     : [];
 
   const visibleUserIds = new Set<string>([
+    // Yourself, always. Otherwise an account in no servers has no presence entry of its
+    // own to render, and its status indicator falls back to a hard-coded "online".
+    userId,
     ...coMemberRows.map((r) => r.userId),
     ...friendUserIds,
     ...dmChannels.flatMap((c) => c.recipients.map((r) => r.id)),
@@ -419,6 +422,17 @@ export function attachGateway(app: FastifyInstance, ctx: AppContext): Gateway {
         .where(eq(users.id, userId));
 
       const snapshot = presence.getSnapshot(userId);
+
+      /*
+       * Your own sockets first, and unconditionally.
+       *
+       * The broadcasts below reach shared rooms, so someone in no servers and no DMs used
+       * to change their status and see nothing happen -- the update was sent to an
+       * audience of nobody, including themselves. It also keeps a second tab or the
+       * desktop app in step, which shared-room delivery only did by coincidence.
+       */
+      io.to(Rooms.user(userId)).emit('presence:update', snapshot);
+
       for (const serverId of socket.data.serverIds) {
         io.to(Rooms.server(serverId)).emit('presence:update', snapshot);
       }

@@ -86,8 +86,25 @@ function ProfileTab({ user }: { user: SelfUser }) {
   const [displayName, setDisplayName] = useState(user.displayName);
   const [bio, setBio] = useState(user.bio ?? '');
   const [customStatus, setCustomStatus] = useState(presence?.customStatus ?? '');
-  const [status, setStatus] = useState<UserStatus>(presence?.status ?? 'online');
   const [saving, setSaving] = useState(false);
+
+  /*
+   * Status is read from presence rather than held locally, and applied on click.
+   *
+   * It used to be form state committed by "Save profile", which meant picking Idle
+   * highlighted the button and did nothing else -- and since the button sits above the
+   * fold and Save below it, the natural thing to do was pick a status and close the
+   * dialog, which discarded it. Status is a switch, not a field: the two controls for it
+   * (here and the user panel menu) now behave identically.
+   *
+   * Deriving it also fixes a staleness bug: local state initialised before the socket's
+   * ready payload arrived would show "Online" for an account that was actually idle.
+   */
+  const status: UserStatus = presence?.status ?? 'online';
+
+  const applyStatus = (next: UserStatus) => {
+    setPresenceStatus(next, customStatus.trim() || null);
+  };
 
   const save = async () => {
     setSaving(true);
@@ -186,7 +203,7 @@ function ProfileTab({ user }: { user: SelfUser }) {
           {STATUS_OPTIONS.map((option) => (
             <button
               key={option.value}
-              onClick={() => setStatus(option.value)}
+              onClick={() => applyStatus(option.value)}
               className={clsx(
                 'flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors',
                 status === option.value

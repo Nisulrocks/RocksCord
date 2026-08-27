@@ -135,6 +135,17 @@ Work top to bottom. Everything here should pass on a freshly seeded database.
 - [ ] Sign out, then sign back in
 - [ ] Refresh the page while signed in — you stay signed in
 - [ ] Sign in with username instead of email
+
+### Status
+
+- [ ] User panel → **Change your status** → Idle: the dot changes immediately
+- [ ] Settings → Profile → **Do not disturb**: the dot changes immediately, with **no
+      need to press Save**
+- [ ] Both places agree, and survive a reload
+- [ ] With an account that has joined **no servers at all**, both still work — this used
+      to broadcast to an empty audience and appear to do nothing
+- [ ] With two windows signed in as the same account, changing status in one updates the
+      other
 - [ ] Settings → Account → change password; other sessions are signed out
 
 ### Email verification
@@ -264,7 +275,14 @@ Settings → Voice. The first four need no second user.
 - [ ] Device names are hidden until you click **Show device names**, then appear
 - [ ] **Test microphone** — the meter moves when you speak, and the top segments turn amber
       when you are close to clipping
-- [ ] Switch microphone mid-test — the meter restarts on the new device
+- [ ] The line under the meter names the device actually opened; it matches the dropdown
+- [ ] Switch microphone mid-test — the meter restarts, and the named device changes
+- [ ] With two microphones, pick the one you are *not* speaking into: the meter stays flat.
+      That is the check that the selection is honoured rather than ignored
+- [ ] **Hear myself** (headphones on) — you hear your own voice, on the chosen output
+- [ ] Untick it — monitoring stops but the meter keeps moving
+- [ ] Pick a microphone, unplug it, then start the test — it says the device is no longer
+      available rather than silently testing a different one
 - [ ] Output volume and the processing toggles survive a full page reload
 - [ ] While in a call with B, change your microphone — **B keeps hearing you**, with no
       disconnect and no gap
