@@ -13,32 +13,39 @@
  * worth brute-forcing.
  */
 
-import { and, eq, gt, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   changePasswordSchema,
   loginSchema,
   registerSchema,
+  resendVerificationSchema,
+  verifyEmailSchema,
   LIMITS,
 } from '@rockscord/shared';
 import { env } from '../env.js';
-import { sessions, users } from '../db/schema.js';
+import { emailVerifications, sessions, users } from '../db/schema.js';
 import {
   REFRESH_COOKIE_NAME,
   clearedRefreshCookieOptions,
   fakeVerifyPassword,
   generateRefreshToken,
+  generateVerificationToken,
   hashPassword,
   hashRefreshToken,
+  hashVerificationToken,
   refreshCookieOptions,
   signAccessToken,
   verifyPassword,
 } from '../lib/auth.js';
+import { emailVerificationRequired, sendVerificationEmail } from '../lib/email/index.js';
+import { verificationResultPage } from '../lib/email/templates.js';
 import { ApiError, fromZodError } from '../lib/errors.js';
 import { newDiscriminator, newId } from '../lib/ids.js';
 import { sanitizeDisplayName } from '../lib/sanitize.js';
 import { toSelfUser } from '../lib/serializers.js';
 import type { Database } from '../db/index.js';
+import type { UserRow } from '../db/schema.js';
 
 /**
  * Issue a fresh session: store the hashed refresh token, set the cookie, return an
@@ -107,6 +114,181 @@ async function allocateDiscriminator(
   throw ApiError.conflict('That username is full. Try a different one.');
 }
 
+/* -------------------------------------------------------------------------- */
+/* Email verification                                                          */
+/* -------------------------------------------------------------------------- */
+
+const APP_NAME = 'RocksCord';
+
+/** How long the resend button is refused, to stop the endpoint being used as a mail cannon. */
+const RESEND_COOLDOWN_MS = 60_000;
+
+function verificationLink(token: string): string {
+  return `${env.PUBLIC_URL}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Mint a verification token for `user` and email the link.
+ *
+ * Any previously issued token is retired first. Without that, an address could be
+ * confirmed by a link generated before the last change to it, and every "resend" would
+ * widen the set of live credentials in someone's inbox rather than replacing it.
+ *
+ * Throws if the message could not be handed to the provider. Callers decide whether that
+ * is fatal -- registration says no, an explicit resend says yes.
+ */
+async function issueVerification(db: Database, user: UserRow): Promise<void> {
+  const token = generateVerificationToken();
+  const timestamp = Date.now();
+
+  await db
+    .update(emailVerifications)
+    .set({ consumedAt: timestamp })
+    .where(
+      and(eq(emailVerifications.userId, user.id), isNull(emailVerifications.consumedAt)),
+    );
+
+  await db.insert(emailVerifications).values({
+    id: newId(),
+    userId: user.id,
+    email: user.email,
+    tokenHash: hashVerificationToken(token),
+    createdAt: timestamp,
+    expiresAt: timestamp + env.EMAIL_VERIFICATION_TTL_SECONDS * 1000,
+  });
+
+  await sendVerificationEmail({
+    to: user.email,
+    name: user.displayName || user.username,
+    link: verificationLink(token),
+  });
+}
+
+/** True when the account was sent a link within the cooldown window. */
+async function verificationSentRecently(db: Database, userId: string): Promise<boolean> {
+  const [latest] = await db
+    .select({ createdAt: emailVerifications.createdAt })
+    .from(emailVerifications)
+    .where(eq(emailVerifications.userId, userId))
+    .orderBy(desc(emailVerifications.createdAt))
+    .limit(1);
+
+  return latest !== undefined && Date.now() - latest.createdAt < RESEND_COOLDOWN_MS;
+}
+
+function resultPage(ok: boolean, heading: string, detail: string): string {
+  return verificationResultPage({
+    ok,
+    heading,
+    detail,
+    appUrl: `${env.PUBLIC_URL}/login`,
+    appName: APP_NAME,
+  });
+}
+
+/**
+ * Confirm an address from a token.
+ *
+ * Returns a rendered outcome rather than throwing, because both entry points -- the link
+ * in the email and the JSON endpoint -- need to describe *which* way it failed.
+ */
+async function consumeVerificationToken(
+  db: Database,
+  rawToken: string,
+): Promise<{ ok: boolean; code: string; heading: string; detail: string }> {
+  const [record] = await db
+    .select()
+    .from(emailVerifications)
+    .where(eq(emailVerifications.tokenHash, hashVerificationToken(rawToken)))
+    .limit(1);
+
+  if (!record) {
+    return {
+      ok: false,
+      code: 'INVALID',
+      heading: 'That link is not valid',
+      detail:
+        'It may have been mistyped, cut short by your email client, or replaced by a newer ' +
+        'one. Request a fresh link from the sign-in screen.',
+    };
+  }
+
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, record.userId))
+    .limit(1);
+
+  if (!user) {
+    return {
+      ok: false,
+      code: 'INVALID',
+      heading: 'That link is not valid',
+      detail: 'The account it belonged to no longer exists.',
+    };
+  }
+
+  if (record.consumedAt !== null) {
+    /*
+     * A used token usually means the person clicked twice, or their mail provider
+     * pre-fetched the link before they ever saw it (Outlook and several corporate filters
+     * do this). If the address ended up verified, that is a success from where they are
+     * standing -- reporting an error would be both alarming and untrue.
+     */
+    if (user.emailVerifiedAt !== null) {
+      return {
+        ok: true,
+        code: 'ALREADY_VERIFIED',
+        heading: 'Already confirmed',
+        detail: `${user.email} is verified. You can sign in.`,
+      };
+    }
+    return {
+      ok: false,
+      code: 'CONSUMED',
+      heading: 'That link has already been used',
+      detail: 'Request a fresh one from the sign-in screen.',
+    };
+  }
+
+  if (record.expiresAt <= Date.now()) {
+    return {
+      ok: false,
+      code: 'EXPIRED',
+      heading: 'That link has expired',
+      detail: 'Request a fresh one from the sign-in screen and it will arrive within a minute.',
+    };
+  }
+
+  if (record.email !== user.email) {
+    // The address changed after the link was sent, so this token proves nothing about
+    // the address the account actually uses now.
+    return {
+      ok: false,
+      code: 'STALE',
+      heading: 'That link is out of date',
+      detail: 'The email address on this account changed. Request a new link.',
+    };
+  }
+
+  const timestamp = Date.now();
+  await db
+    .update(emailVerifications)
+    .set({ consumedAt: timestamp })
+    .where(eq(emailVerifications.id, record.id));
+  await db
+    .update(users)
+    .set({ emailVerifiedAt: timestamp, updatedAt: timestamp })
+    .where(eq(users.id, user.id));
+
+  return {
+    ok: true,
+    code: 'VERIFIED',
+    heading: 'Email confirmed',
+    detail: `${user.email} is verified. You can sign in now.`,
+  };
+}
+
 export default async function authRoutes(app: FastifyInstance): Promise<void> {
   const { db } = app.ctx;
 
@@ -151,6 +333,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       const passwordHash = await hashPassword(password);
       const userId = newId();
       const timestamp = Date.now();
+      const mustVerify = emailVerificationRequired();
 
       await db.insert(users).values({
         id: userId,
@@ -161,17 +344,40 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
         displayName,
         passwordHash,
         status: 'online',
+        // With no way to deliver a link there is nothing to confirm, so the account is
+        // treated as verified rather than left in a state it could never leave.
+        emailVerifiedAt: mustVerify ? null : timestamp,
         createdAt: timestamp,
         updatedAt: timestamp,
         lastSeenAt: timestamp,
       });
 
       const [created] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-      const tokens = await issueSession(db, reply, request, userId);
 
       request.log.info({ userId, username: `${username}#${discriminator}` }, 'user registered');
 
-      return reply.status(201).send({ user: toSelfUser(created!), ...tokens });
+      if (!mustVerify) {
+        const tokens = await issueSession(db, reply, request, userId);
+        return reply.status(201).send({ user: toSelfUser(created!), ...tokens });
+      }
+
+      /*
+       * No session is issued: the whole point is that the address is unproven. The client
+       * shows a "check your inbox" screen from `verificationRequired`.
+       */
+      try {
+        await issueVerification(db, created!);
+      } catch (error) {
+        /*
+         * A provider outage must not cost someone their account -- it exists, the password
+         * is stored, and the resend button on the next screen will retry. The operator
+         * needs to see this, so it is logged at error level with the provider's own
+         * explanation, which is usually a misconfigured sender.
+         */
+        request.log.error({ err: error, userId }, 'could not send verification email');
+      }
+
+      return reply.status(201).send({ verificationRequired: true, email });
     },
   );
 
@@ -215,6 +421,27 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
 
       if (!(await verifyPassword(user.passwordHash, password))) {
         throw ApiError.invalidCredentials();
+      }
+
+      if (user.emailVerifiedAt === null && emailVerificationRequired()) {
+        /*
+         * Checked only after the password verifies, so this never becomes an oracle for
+         * which addresses are registered. By this point the caller has already proved they
+         * own the account, so echoing the address back is safe -- and it lets the client
+         * offer a resend to someone who signed in with their username and may not recall
+         * which address they used.
+         *
+         * Sent rather than thrown because `details` carries per-field validation messages
+         * and this is not one; overloading it would put an email address where the form
+         * expects an error string.
+         */
+        return reply.status(403).send({
+          error: {
+            code: 'EMAIL_NOT_VERIFIED',
+            message: 'Confirm your email address before signing in',
+            email: user.email,
+          },
+        });
       }
 
       await db
@@ -416,8 +643,119 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  /* -------------------------------------------------------------------- */
+  /* Email verification                                                    */
+  /* -------------------------------------------------------------------- */
+
+  /**
+   * The target of the link in the email.
+   *
+   * A GET that changes state is a deliberate concession: a mail client can only offer a
+   * link, and demanding a form submission instead would break the flow for everyone to
+   * defend against a request no attacker can forge, since the token is the secret.
+   */
+  app.get(
+    '/verify-email',
+    { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } },
+    async (request, reply) => {
+      const token = (request.query as { token?: string } | undefined)?.token;
+
+      const outcome =
+        typeof token === 'string' && token.length >= 20
+          ? await consumeVerificationToken(db, token)
+          : {
+              ok: false,
+              code: 'INVALID',
+              heading: 'That link is not valid',
+              detail: 'It is missing its confirmation code. Try copying the full address.',
+            };
+
+      if (outcome.ok) {
+        request.log.info({ code: outcome.code }, 'email verified');
+      }
+
+      return reply
+        .status(outcome.ok ? 200 : 400)
+        .type('text/html; charset=utf-8')
+        // Nothing about a one-time link should be cached, by the browser or anything between.
+        .header('Cache-Control', 'no-store')
+        .header('Referrer-Policy', 'no-referrer')
+        .header('X-Content-Type-Options', 'nosniff')
+        .send(resultPage(outcome.ok, outcome.heading, outcome.detail));
+    },
+  );
+
+  /** The same operation as JSON, for clients that would rather not follow a redirect. */
+  app.post(
+    '/verify-email',
+    { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } },
+    async (request, reply) => {
+      const parsed = verifyEmailSchema.safeParse(request.body);
+      if (!parsed.success) throw fromZodError(parsed.error);
+
+      const outcome = await consumeVerificationToken(db, parsed.data.token);
+      if (!outcome.ok) {
+        throw new ApiError(400, 'BAD_REQUEST', outcome.detail);
+      }
+      return reply.send({ verified: true, alreadyVerified: outcome.code === 'ALREADY_VERIFIED' });
+    },
+  );
+
+  /**
+   * Send another link.
+   *
+   * Always answers the same way, whether the address is unknown, already verified, or
+   * merely inside the cooldown. Anything else turns this into a way to test whether an
+   * address has an account, which is exactly what login goes to some trouble to avoid.
+   */
+  app.post(
+    '/resend-verification',
+    { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } },
+    async (request, reply) => {
+      const parsed = resendVerificationSchema.safeParse(request.body);
+      if (!parsed.success) throw fromZodError(parsed.error);
+
+      const uniform = {
+        ok: true,
+        message: 'If that address needs confirming, a new link is on its way.',
+        cooldownSeconds: Math.round(RESEND_COOLDOWN_MS / 1000),
+      };
+
+      if (!emailVerificationRequired()) return reply.send(uniform);
+
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, parsed.data.email))
+        .limit(1);
+
+      if (!user || user.emailVerifiedAt !== null) return reply.send(uniform);
+      if (await verificationSentRecently(db, user.id)) return reply.send(uniform);
+
+      try {
+        await issueVerification(db, user);
+      } catch (error) {
+        /*
+         * Unlike registration, this failure is worth reporting. The user pressed a button
+         * and is now waiting for mail that will never arrive; leaving them to guess is
+         * worse than admitting the send failed. The provider's own message stays in the
+         * log -- it names the account, which the response must not.
+         */
+        request.log.error({ err: error, userId: user.id }, 'could not resend verification email');
+        throw new ApiError(
+          502,
+          'INTERNAL_ERROR',
+          'The email could not be sent right now. Try again in a few minutes.',
+        );
+      }
+
+      return reply.send(uniform);
+    },
+  );
+
   app.get('/config', async () => ({
     allowRegistration: env.ALLOW_REGISTRATION,
+    requireEmailVerification: emailVerificationRequired(),
     limits: {
       usernameMax: LIMITS.USERNAME_MAX,
       passwordMin: LIMITS.PASSWORD_MIN,

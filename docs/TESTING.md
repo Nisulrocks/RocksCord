@@ -137,6 +137,27 @@ Work top to bottom. Everything here should pass on a freshly seeded database.
 - [ ] Sign in with username instead of email
 - [ ] Settings → Account → change password; other sessions are signed out
 
+### Email verification
+
+Only applies when a provider is configured. To exercise it locally without one, start the
+server with `REQUIRE_EMAIL_VERIFICATION=true` and copy links out of the terminal:
+
+```bash
+REQUIRE_EMAIL_VERIFICATION=true npm start
+```
+
+- [ ] Register — you land on "Check your inbox", **not** in the app
+- [ ] The email arrives (or the link is printed to the server log)
+- [ ] Trying to sign in before confirming shows "Confirm your email to continue"
+- [ ] Signing in with the **wrong** password on that account says invalid credentials, not
+      unverified — the address must not leak to someone who does not know the password
+- [ ] The resend button is disabled for 60 seconds, then works
+- [ ] Clicking the link shows a confirmation page
+- [ ] You can now sign in
+- [ ] Clicking the same link again says "already confirmed" rather than showing an error
+- [ ] Editing a character out of the link gives "that link is not valid"
+- [ ] Requesting a resend, then using the **older** link, is rejected
+
 ### Servers and channels
 
 - [ ] Create a server — it gets `#general`, a voice channel, and Admin/Moderator roles

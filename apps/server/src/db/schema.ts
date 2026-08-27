@@ -33,6 +33,13 @@ export const users = sqliteTable(
   {
     id: text('id').primaryKey(),
     email: text('email').notNull(),
+    /**
+     * When the address was confirmed by clicking an emailed link; null while unverified.
+     *
+     * A nullable timestamp rather than a boolean plus a date: there is then exactly one
+     * source of truth, so "verified but no date" cannot happen.
+     */
+    emailVerifiedAt: integer('email_verified_at'),
     /** Lowercased copy of `username`, used for case-insensitive uniqueness and lookup. */
     usernameLower: text('username_lower').notNull(),
     username: text('username').notNull(),
@@ -55,6 +62,37 @@ export const users = sqliteTable(
     uniqueIndex('users_email_unique').on(t.email),
     uniqueIndex('users_handle_unique').on(t.usernameLower, t.discriminator),
     index('users_username_lower_idx').on(t.usernameLower),
+  ],
+);
+
+/**
+ * Outstanding email-verification links.
+ *
+ * The same reasoning as `sessions`: the token in the email is a bearer credential, so
+ * only its SHA-256 hash is stored. Someone who reads this table cannot verify anyone.
+ *
+ * `email` records which address the token proves. If the account's address changes
+ * before the link is clicked, the stale token no longer matches and is rejected --
+ * otherwise an old link could confirm an address its owner never received mail at.
+ */
+export const emailVerifications = sqliteTable(
+  'email_verifications',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    createdAt: integer('created_at').notNull().default(now),
+    expiresAt: integer('expires_at').notNull(),
+    /** Set on use. Kept rather than deleted so a replayed link can say "already used". */
+    consumedAt: integer('consumed_at'),
+  },
+  (t) => [
+    uniqueIndex('email_verifications_token_hash_unique').on(t.tokenHash),
+    index('email_verifications_user_idx').on(t.userId),
+    index('email_verifications_expires_idx').on(t.expiresAt),
   ],
 );
 

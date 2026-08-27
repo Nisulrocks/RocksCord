@@ -87,6 +87,9 @@ async function upsertUser(db: Database, seed: SeedUser, passwordHash: string): P
     passwordHash,
     bio: seed.bio,
     status: 'online',
+    // Demo accounts are pre-verified: their addresses are fictional, so a confirmation
+    // link would never arrive and the seeded logins in the README would not work.
+    emailVerifiedAt: Date.now(),
   });
   return id;
 }

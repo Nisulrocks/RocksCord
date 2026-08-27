@@ -107,6 +107,40 @@ const schema = z.object({
 
   /** Allow open registration. Turn off to lock down a public deployment. */
   ALLOW_REGISTRATION: booleanish.default(true),
+
+  /* --- Email ---------------------------------------------------------- */
+
+  /**
+   * Which transport delivers verification mail.
+   *
+   *   auto     pick `brevo` if BREVO_API_KEY is set, otherwise `console`
+   *   brevo    Brevo transactional API (free tier: 300 messages/day, no card)
+   *   console  print the link to the server log and send nothing
+   *
+   * `console` is what makes local development and the packaged desktop build work with
+   * no account anywhere: the link is still generated, it just arrives in the log.
+   */
+  EMAIL_DRIVER: z.enum(['auto', 'brevo', 'console']).default('auto'),
+  EMAIL_API_KEY: z.string().default(''),
+  /** Must be an address you have verified as a sender with the provider. */
+  EMAIL_FROM: z.string().default(''),
+  EMAIL_FROM_NAME: z.string().default('RocksCord'),
+
+  /**
+   * Whether an unverified account may sign in.
+   *
+   * Left unset it follows the transport: required when mail can actually be delivered,
+   * relaxed when it cannot. That default matters -- hard-coding `true` would lock every
+   * offline desktop user out of their own machine, since no link would ever arrive.
+   */
+  REQUIRE_EMAIL_VERIFICATION: booleanish.optional(),
+
+  /** How long a verification link stays valid. */
+  EMAIL_VERIFICATION_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(300)
+    .default(60 * 60 * 24),
 });
 
 export type Env = z.infer<typeof schema> & {
@@ -177,6 +211,17 @@ function buildEnv(): Env {
     }
   }
   env.PUBLIC_URL = env.PUBLIC_URL.replace(/\/+$/, '');
+
+  if (env.EMAIL_DRIVER === 'brevo' && !env.EMAIL_API_KEY) {
+    throw new Error('EMAIL_DRIVER=brevo requires EMAIL_API_KEY to be set.');
+  }
+
+  if (!env.EMAIL_FROM && env.EMAIL_API_KEY) {
+    throw new Error(
+      'EMAIL_FROM is required when an email provider is configured. Use the address you ' +
+        'verified as a sender with the provider, e.g. EMAIL_FROM=you@gmail.com',
+    );
+  }
 
   if (env.STORAGE_DRIVER === 'supabase' && (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY)) {
     throw new Error(

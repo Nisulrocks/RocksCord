@@ -50,6 +50,19 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Enter your password').max(LIMITS.PASSWORD_MAX),
 });
 
+/**
+ * Verification tokens are 32 random bytes in base64url (43 characters). The bounds are
+ * deliberately loose rather than exact: a mistyped or truncated link should fail as an
+ * invalid *token*, which is a message the user can act on, not as a schema error.
+ */
+export const verifyEmailSchema = z.object({
+  token: z.string().trim().min(20).max(200),
+});
+
+export const resendVerificationSchema = z.object({
+  email: emailSchema,
+});
+
 export const updateProfileSchema = z.object({
   displayName: z.string().trim().min(1).max(LIMITS.DISPLAY_NAME_MAX).optional(),
   bio: z.string().trim().max(LIMITS.BIO_MAX).nullable().optional(),
@@ -181,6 +194,8 @@ export const searchSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type CreateServerInput = z.infer<typeof createServerSchema>;
 export type CreateChannelInput = z.infer<typeof createChannelSchema>;

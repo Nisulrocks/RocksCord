@@ -47,6 +47,8 @@ export class ApiClientError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details?: Record<string, string[]>;
+  /** Only present on EMAIL_NOT_VERIFIED: the address that still needs confirming. */
+  readonly email?: string;
 
   constructor(status: number, body: ApiErrorBody | null, fallback: string) {
     super(body?.error?.message ?? fallback);
@@ -54,6 +56,7 @@ export class ApiClientError extends Error {
     this.status = status;
     this.code = body?.error?.code ?? 'UNKNOWN';
     this.details = body?.error?.details;
+    this.email = body?.error?.email;
   }
 
   /** First validation message for a field, for inline form errors. */

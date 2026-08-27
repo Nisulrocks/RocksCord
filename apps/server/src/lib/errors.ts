@@ -25,6 +25,7 @@ export type ErrorCode =
   | 'PAYLOAD_TOO_LARGE'
   | 'UNSUPPORTED_MEDIA_TYPE'
   | 'REGISTRATION_DISABLED'
+  | 'EMAIL_NOT_VERIFIED'
   | 'BANNED'
   | 'INTERNAL_ERROR';
 
@@ -78,6 +79,9 @@ export class ApiError extends Error {
   }
   static rateLimited(message = 'You are doing that too fast. Slow down.') {
     return new ApiError(429, 'RATE_LIMITED', message);
+  }
+  static emailNotVerified(message = 'Confirm your email address to sign in') {
+    return new ApiError(403, 'EMAIL_NOT_VERIFIED', message);
   }
 }
 

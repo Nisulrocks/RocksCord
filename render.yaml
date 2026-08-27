@@ -64,6 +64,23 @@ services:
       - key: DATABASE_AUTH_TOKEN
         sync: false
 
+      # --- Email verification ---------------------------------------------
+      #
+      # Leave EMAIL_API_KEY blank and the service still deploys: registration then signs
+      # people straight in, exactly as it did before, because no confirmation link could
+      # be delivered.
+      #
+      # To turn verification on, sign up at https://app.brevo.com (free, 300/day, no
+      # card), verify one sender address, then set both of these in the Render dashboard.
+      # No redeploy is needed -- Render restarts the service when a variable changes.
+      - key: EMAIL_API_KEY
+        sync: false
+      # Must match the sender address verified with Brevo.
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: RocksCord
+
       # --- File uploads ---------------------------------------------------
       #
       # Defaults to `local` so the very first deploy always boots. Free instances have

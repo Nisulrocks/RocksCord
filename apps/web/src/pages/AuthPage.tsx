@@ -13,7 +13,9 @@ import { AtSign, KeyRound, User as UserIcon } from 'lucide-react';
 import { loginSchema, registerSchema } from '@rockscord/shared';
 import type { SelfUser } from '@rockscord/shared';
 import { ApiClientError } from '../lib/api';
+import type { RegisterResult } from '../hooks/useAuth';
 import { Button, Field, Input } from '../components/ui/primitives';
+import { VerifyEmailNotice } from '../components/auth/VerifyEmailNotice';
 
 interface AuthPageProps {
   mode: 'login' | 'register';
@@ -23,7 +25,14 @@ interface AuthPageProps {
     username: string;
     password: string;
     displayName?: string;
-  }) => Promise<SelfUser>;
+  }) => Promise<RegisterResult>;
+}
+
+/** Set while an account is waiting on a confirmation link, which replaces the form. */
+interface PendingVerification {
+  email: string;
+  /** Distinguishes "you just signed up" from "this old account was never confirmed". */
+  fromLogin: boolean;
 }
 
 export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
@@ -39,6 +48,7 @@ export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pending, setPending] = useState<PendingVerification | null>(null);
 
   /**
    * Validate locally first. This is a UX nicety only -- it saves a round trip and gives
@@ -80,18 +90,30 @@ export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
 
     try {
       if (isRegister) {
-        await onRegister({
+        const result = await onRegister({
           email,
           username,
           password,
           displayName: displayName || undefined,
         });
+
+        if (result.status === 'verify-email') {
+          // No session was issued, so there is nowhere to navigate to yet.
+          setPending({ email: result.email, fromLogin: false });
+          return;
+        }
       } else {
         await onLogin(identifier, password);
       }
       navigate('/friends', { replace: true });
     } catch (error) {
       if (error instanceof ApiClientError) {
+        if (error.code === 'EMAIL_NOT_VERIFIED') {
+          // The password was correct; only the address is unconfirmed. The server echoes
+          // it back because the user may have signed in with their username.
+          setPending({ email: error.email ?? identifier, fromLogin: true });
+          return;
+        }
         if (error.details) {
           const mapped: Record<string, string> = {};
           for (const [field, messages] of Object.entries(error.details)) {
@@ -128,125 +150,142 @@ export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
       <div className="relative w-full max-w-[420px]">
         <div className="mb-7 flex flex-col items-center gap-3 text-center">
           <RocksCordMark />
-          <div>
-            <h1 className="text-[26px] font-semibold tracking-tight text-ink">
-              {isRegister ? 'Create your account' : 'Welcome back'}
-            </h1>
-            <p className="mt-1 text-sm text-ink-dim">
-              {isRegister
-                ? 'Pick a name. You can change how it looks later.'
-                : 'Sign in to pick up where you left off.'}
-            </p>
-          </div>
+          {/* The verification notice brings its own heading; this one would duplicate it. */}
+          {!pending && (
+            <div>
+              <h1 className="text-[26px] font-semibold tracking-tight text-ink">
+                {isRegister ? 'Create your account' : 'Welcome back'}
+              </h1>
+              <p className="mt-1 text-sm text-ink-dim">
+                {isRegister
+                  ? 'Pick a name. You can change how it looks later.'
+                  : 'Sign in to pick up where you left off.'}
+              </p>
+            </div>
+          )}
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-panel border border-line bg-surface-2 p-6 shadow-pop"
-          noValidate
-        >
-          <div className="space-y-4">
-            {isRegister ? (
-              <>
-                <Field label="Email" error={errors.email} required>
-                  <Input
-                    type="email"
-                    autoComplete="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    invalid={Boolean(errors.email)}
-                    autoFocus
-                  />
-                </Field>
+        {pending ? (
+          <VerifyEmailNotice
+            email={pending.email}
+            fromLogin={pending.fromLogin}
+            onBack={() => {
+              setPending(null);
+              setPassword('');
+              navigate('/login');
+            }}
+          />
+        ) : (
+          <>
+          <form
+            onSubmit={handleSubmit}
+            className="rounded-panel border border-line bg-surface-2 p-6 shadow-pop"
+            noValidate
+          >
+            <div className="space-y-4">
+              {isRegister ? (
+                <>
+                  <Field label="Email" error={errors.email} required>
+                    <Input
+                      type="email"
+                      autoComplete="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      invalid={Boolean(errors.email)}
+                      autoFocus
+                    />
+                  </Field>
 
-                <Field
-                  label="Username"
-                  hint="Letters, numbers, and . _ - . You will get a #tag automatically."
-                  error={errors.username}
-                  required
-                >
-                  <Input
-                    autoComplete="username"
-                    placeholder="alex"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    invalid={Boolean(errors.username)}
-                  />
-                </Field>
+                  <Field
+                    label="Username"
+                    hint="Letters, numbers, and . _ - . You will get a #tag automatically."
+                    error={errors.username}
+                    required
+                  >
+                    <Input
+                      autoComplete="username"
+                      placeholder="alex"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      invalid={Boolean(errors.username)}
+                    />
+                  </Field>
 
-                <Field label="Display name" hint="Optional. Defaults to your username.">
-                  <Input
-                    placeholder="Alex Rivera"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                  />
-                </Field>
+                  <Field label="Display name" hint="Optional. Defaults to your username.">
+                    <Input
+                      placeholder="Alex Rivera"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                    />
+                  </Field>
 
-                <Field label="Password" error={errors.password} required>
-                  <Input
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="At least 8 characters"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    invalid={Boolean(errors.password)}
-                  />
-                </Field>
-              </>
-            ) : (
-              <>
-                <Field label="Email or username" error={errors.identifier} required>
-                  <Input
-                    autoComplete="username"
-                    placeholder="you@example.com"
-                    value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
-                    invalid={Boolean(errors.identifier)}
-                    autoFocus
-                  />
-                </Field>
+                  <Field label="Password" error={errors.password} required>
+                    <Input
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="At least 8 characters"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      invalid={Boolean(errors.password)}
+                    />
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <Field label="Email or username" error={errors.identifier} required>
+                    <Input
+                      autoComplete="username"
+                      placeholder="you@example.com"
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      invalid={Boolean(errors.identifier)}
+                      autoFocus
+                    />
+                  </Field>
 
-                <Field label="Password" error={errors.password} required>
-                  <Input
-                    type="password"
-                    autoComplete="current-password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    invalid={Boolean(errors.password)}
-                  />
-                </Field>
-              </>
+                  <Field label="Password" error={errors.password} required>
+                    <Input
+                      type="password"
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      invalid={Boolean(errors.password)}
+                    />
+                  </Field>
+                </>
+              )}
+            </div>
+
+            {formError && (
+              <p className="mt-4 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-[13px] text-danger">
+                {formError}
+              </p>
             )}
-          </div>
 
-          {formError && (
-            <p className="mt-4 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-[13px] text-danger">
-              {formError}
+            <Button type="submit" block size="lg" loading={submitting} className="mt-6">
+              {isRegister ? 'Create account' : 'Sign in'}
+            </Button>
+
+            <p className="mt-4 text-center text-[13px] text-ink-dim">
+              {isRegister ? 'Already have an account? ' : 'New here? '}
+              <Link
+                to={isRegister ? '/login' : '/register'}
+                className="font-medium text-accent-soft hover:underline"
+              >
+                {isRegister ? 'Sign in' : 'Create one'}
+              </Link>
             </p>
-          )}
+          </form>
 
-          <Button type="submit" block size="lg" loading={submitting} className="mt-6">
-            {isRegister ? 'Create account' : 'Sign in'}
-          </Button>
-
-          <p className="mt-4 text-center text-[13px] text-ink-dim">
-            {isRegister ? 'Already have an account? ' : 'New here? '}
-            <Link
-              to={isRegister ? '/login' : '/register'}
-              className="font-medium text-accent-soft hover:underline"
-            >
-              {isRegister ? 'Sign in' : 'Create one'}
-            </Link>
+          <p className="mt-5 text-center text-[12px] leading-relaxed text-ink-faint">
+            Running the seeded demo? Sign in as{' '}
+            <code className="rounded bg-surface-3 px-1.5 py-0.5 text-ink-dim">alex@rockscord.test</code>{' '}
+            with <code className="rounded bg-surface-3 px-1.5 py-0.5 text-ink-dim">password123</code>
           </p>
-        </form>
-
-        <p className="mt-5 text-center text-[12px] leading-relaxed text-ink-faint">
-          Running the seeded demo? Sign in as{' '}
-          <code className="rounded bg-surface-3 px-1.5 py-0.5 text-ink-dim">alex@rockscord.test</code>{' '}
-          with <code className="rounded bg-surface-3 px-1.5 py-0.5 text-ink-dim">password123</code>
-        </p>
+          </>
+        )}
       </div>
     </div>
   );

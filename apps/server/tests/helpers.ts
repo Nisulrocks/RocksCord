@@ -28,6 +28,7 @@ import type { AppContext } from '../src/context.js';
 import { resetPresence } from '../src/realtime/presence.js';
 import { resetVoice } from '../src/realtime/voice.js';
 import { setStorageDriver, type StorageDriver } from '../src/lib/storage/index.js';
+import { setEmailDriver, type EmailDriver, type EmailMessage } from '../src/lib/email/index.js';
 
 export interface TestApp {
   app: FastifyInstance;
@@ -35,6 +36,8 @@ export interface TestApp {
   db: Database;
   /** Base URL when the app is listening on a real port; empty otherwise. */
   url: string;
+  /** Captured outbound email. Only populated when built with `{ email: true }`. */
+  mail: ReturnType<typeof createMemoryEmail> | null;
   close: () => Promise<void>;
 }
 
@@ -59,6 +62,42 @@ export function createMemoryStorage(): StorageDriver & { files: Map<string, Buff
   };
 }
 
+/**
+ * A capturing email driver.
+ *
+ * `canDeliver: true` is the significant part: it is what makes the server treat email
+ * verification as required, exactly as a real provider would. Tests that do not install
+ * this driver fall through to the console transport, which cannot deliver, so verification
+ * stays off and every pre-existing test keeps its original register-and-sign-in behaviour.
+ */
+export function createMemoryEmail(): EmailDriver & {
+  sent: EmailMessage[];
+  lastLink(): string;
+  lastToken(): string;
+} {
+  const sent: EmailMessage[] = [];
+  return {
+    name: 'memory',
+    canDeliver: true,
+    sent,
+    async send(message) {
+      sent.push(message);
+    },
+    lastLink() {
+      const last = sent.at(-1);
+      if (!last) throw new Error('no email was sent');
+      const link = last.text.match(/https?:\/\/\S+/)?.[0];
+      if (!link) throw new Error(`no link found in email body:\n${last.text}`);
+      return link;
+    },
+    lastToken() {
+      const token = new URL(this.lastLink()).searchParams.get('token');
+      if (!token) throw new Error('verification link carried no token');
+      return token;
+    },
+  };
+}
+
 interface BuildOptions {
   /**
    * Use the real on-disk storage driver instead of the in-memory fake.
@@ -67,6 +106,8 @@ interface BuildOptions {
    * entirely — a gap that once hid a bug where serving an existing file hung forever.
    */
   realStorage?: boolean;
+  /** Install a capturing email driver, which also switches verification on. */
+  email?: boolean;
 }
 
 async function build(listen: boolean, options: BuildOptions = {}): Promise<TestApp> {
@@ -81,6 +122,9 @@ async function build(listen: boolean, options: BuildOptions = {}): Promise<TestA
   const uploadDir = path.join(directory, 'uploads');
   mkdirSync(uploadDir, { recursive: true });
   process.env.UPLOAD_DIR = uploadDir;
+
+  const mail = options.email ? createMemoryEmail() : null;
+  setEmailDriver(mail);
 
   if (options.realStorage) {
     // null = fall through to the configured driver, which is `local`.
@@ -110,9 +154,11 @@ async function build(listen: boolean, options: BuildOptions = {}): Promise<TestA
     ctx: built.ctx,
     db: handle.db,
     url,
+    mail,
     close: async () => {
       await built.close();
       await handle.close();
+      setEmailDriver(null);
       // Presence and voice are module-level singletons; clear them so the next file
       // does not inherit "online" users from this one.
       resetPresence();
@@ -170,6 +216,17 @@ export async function registerUser(
   }
 
   const body = response.json();
+
+  if (body.verificationRequired) {
+    // Reaching here means the harness was built with `{ email: true }`. That path returns
+    // no session by design, so every fixture built on this helper would fail later with a
+    // confusing "cannot read id of undefined" instead of naming the real cause.
+    throw new Error(
+      'registerUser was called while email verification is required. ' +
+        'Use registerPending() and confirm the address first.',
+    );
+  }
+
   const setCookie = response.headers['set-cookie'];
   const cookieHeader = Array.isArray(setCookie) ? setCookie[0]! : (setCookie ?? '');
 
@@ -183,6 +240,36 @@ export async function registerUser(
     refreshCookie: cookieHeader.split(';')[0] ?? '',
     auth: { authorization: `Bearer ${body.accessToken}` },
   };
+}
+
+/**
+ * Register an account that still needs to confirm its address.
+ *
+ * Returns the token lifted out of the captured email, so a test can drive the whole
+ * confirm-then-sign-in journey the way a person would.
+ */
+export async function registerPending(
+  test: TestApp,
+  overrides: Partial<{ username: string; email: string; password: string }> = {},
+): Promise<{ email: string; username: string; password: string; token: string }> {
+  if (!test.mail) throw new Error('registerPending requires a harness built with { email: true }');
+
+  userCounter += 1;
+  const username = overrides.username ?? `pend${userCounter}${Math.random().toString(36).slice(2, 6)}`;
+  const email = overrides.email ?? `${username}@test.local`;
+  const password = overrides.password ?? 'correct horse battery';
+
+  const response = await test.app.inject({
+    method: 'POST',
+    url: '/api/auth/register',
+    payload: { email, username, password },
+  });
+
+  if (response.statusCode !== 201) {
+    throw new Error(`registerPending failed: ${response.statusCode} ${response.body}`);
+  }
+
+  return { email, username, password, token: test.mail.lastToken() };
 }
 
 /** Create a server and return its id plus the ids of its default channels and roles. */

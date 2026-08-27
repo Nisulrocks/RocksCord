@@ -272,7 +272,7 @@ DiscordClone/
 │   └── src/main.ts           Boots the server in-process, opens the window
 │
 ├── scripts/                  setup, desktop staging, exe build, icons, smoke test
-└── docs/                     ARCHITECTURE.md, TESTING.md, DEPLOYMENT.md
+└── docs/                     ARCHITECTURE.md, TESTING.md, DEPLOYMENT.md, EMAIL.md, SHARING.md
 ```
 
 ---
@@ -346,6 +346,9 @@ these are the ones that matter.
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS |
 | `CORS_ORIGIN` | `*` | Comma-separated allowed origins |
 | `ALLOW_REGISTRATION` | `true` | Set `false` to close signups |
+| `EMAIL_API_KEY` | — | Brevo API key. Setting it turns email verification on |
+| `EMAIL_FROM` | — | Sender address, verified with the provider. Required alongside the key |
+| `REQUIRE_EMAIL_VERIFICATION` | inferred | Follows whether mail can be delivered; set to override |
 | `TURN_URL` | — | Optional TURN relay for restrictive networks |
 
 ---
@@ -533,12 +536,35 @@ Railway, a VPS).
 | XSS | Messages are parsed into tokens and rendered as React elements. `innerHTML` is never used, so injected markup is text by construction rather than by sanitising. |
 | SQL injection | Every query is parameterised through Drizzle. FTS5 search terms are escaped into literal phrases. |
 | Uploads | The real type is sniffed from the file's bytes; a declared `Content-Type` is never trusted. Filenames are stripped of paths, traversal, and Windows device names. Non-media downloads instead of rendering, with `nosniff` and a restrictive CSP. |
+| Email verification | Registration issues no session until the address is confirmed. Links are 256-bit tokens stored only as SHA-256 hashes, single-use, expiring in 24 hours, and invalidated when a newer one is sent or when the account's address changes. |
 | Rate limiting | Per-user when authenticated, per-IP otherwise. Tight limits on login, registration, password change, uploads, and sending. |
 | Input | Every request body is validated with Zod. Invisible, control, and bidirectional-override characters are stripped from user text. |
 
-**Not production-hardened**, and deliberately so: there is no email verification, no
-password reset, no 2FA, no CAPTCHA, and no moderation tooling beyond kick/ban/audit log.
-Those are listed under [Future improvements](#future-improvements).
+### Email verification
+
+Registration returns **no session**. The account exists, but until the address is
+confirmed there is nothing to sign in with, and `/api/auth/login` answers `403
+EMAIL_NOT_VERIFIED` — checked *after* the password, so it cannot be used to discover which
+addresses are registered.
+
+Configure a provider and it switches itself on:
+
+```bash
+EMAIL_API_KEY=your-brevo-key
+EMAIL_FROM=the-address-you-verified@example.com
+```
+
+With no provider configured, the transport falls back to printing the link to the server
+log and verification is **not** enforced. That is not a loophole, it is the only coherent
+behaviour for an offline desktop install: demanding a click on a link that can never be
+delivered would lock someone out of their own machine permanently. `REQUIRE_EMAIL_VERIFICATION`
+overrides the inference in either direction.
+
+[docs/EMAIL.md](docs/EMAIL.md) walks through the provider setup.
+
+**Still not production-hardened**: no password reset, no 2FA, no CAPTCHA, and no moderation
+tooling beyond kick/ban/audit log. Those are listed under
+[Future improvements](#future-improvements).
 
 ---
 
@@ -569,6 +595,11 @@ Those are listed under [Future improvements](#future-improvements).
   older ones are re-fetched on scroll. Fine in practice, but not a virtualised list.
 - **Light theme is not implemented.** The palette is entirely CSS custom properties in one
   file, so it is a token swap rather than a rewrite — but it is not done.
+- **Verification mail can land in spam.** A brand-new sender has no reputation, so the
+  first message to a given provider often gets filtered. The sign-in screen says so, and
+  the resend button is one click — but it is a real cost of a free tier with no domain.
+- **300 verification emails per day** on Brevo's free tier, shared with anything else you
+  send from that account.
 - **The executable is unsigned**, so Windows SmartScreen shows a warning on first run
   ("More info" → "Run anyway"). Code-signing certificates cost money.
 
@@ -578,8 +609,8 @@ Those are listed under [Future improvements](#future-improvements).
 
 Roughly in the order I would do them:
 
-1. **Email verification and password reset** — needs a free email provider (Resend's free
-   tier is 3,000/month).
+1. **Password reset** — the email transport and single-use token machinery from
+   verification are already in place, so this is largely a second route over the same parts.
 2. **Message virtualisation** — render only the visible window so a 50,000-message channel
    scrolls as smoothly as a new one.
 3. **Light theme** — the tokens are already isolated; this is mostly picking values.

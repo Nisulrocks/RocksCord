@@ -136,6 +136,26 @@ export function hashRefreshToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+/* -------------------------------------------------------------------------- */
+/* Email verification tokens                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The secret inside a verification link.
+ *
+ * base64url specifically: the token is pasted into a query string and then through mail
+ * clients that helpfully "fix" URLs, so an alphabet with no characters needing
+ * percent-encoding avoids a class of links that arrive subtly mangled.
+ */
+export function generateVerificationToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/** Same reasoning as `hashRefreshToken`: full-entropy secret, so a fast hash is correct. */
+export function hashVerificationToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
 /** Constant-time comparison for any secret compared outside the database. */
 export function safeEqual(a: string, b: string): boolean {
   const bufferA = Buffer.from(a);

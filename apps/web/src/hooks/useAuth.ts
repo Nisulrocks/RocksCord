@@ -27,6 +27,20 @@ interface AuthResponse {
   expiresIn: number;
 }
 
+/**
+ * Registration has two possible endings.
+ *
+ * When the server requires a confirmed address it deliberately issues no session, so
+ * there is nothing to sign in with -- the caller has to show a "check your inbox" screen
+ * instead of navigating into the app. Making that a distinct shape rather than an
+ * optional token field means the caller cannot forget to handle it.
+ */
+export type RegisterResult =
+  | { status: 'signed-in'; user: SelfUser }
+  | { status: 'verify-email'; email: string };
+
+type RegisterResponse = AuthResponse | { verificationRequired: true; email: string };
+
 export type AuthPhase = 'checking' | 'signed-out' | 'signed-in';
 
 /** Refresh this long before expiry, so a slow network still beats the deadline. */
@@ -142,12 +156,17 @@ export function useAuth() {
       username: string;
       password: string;
       displayName?: string;
-    }) => {
-      const response = await api.post<AuthResponse>('/api/auth/register', input, {
+    }): Promise<RegisterResult> => {
+      const response = await api.post<RegisterResponse>('/api/auth/register', input, {
         skipRefresh: true,
       });
+
+      if ('verificationRequired' in response) {
+        return { status: 'verify-email', email: response.email };
+      }
+
       establish(response);
-      return response.user;
+      return { status: 'signed-in', user: response.user };
     },
     [establish],
   );

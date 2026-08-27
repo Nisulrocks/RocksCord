@@ -24,6 +24,8 @@ export interface PublicUser {
 /** Everything a user is allowed to know about themselves. */
 export interface SelfUser extends PublicUser {
   email: string;
+  /** False until the address has been confirmed via an emailed link. */
+  emailVerified: boolean;
 }
 
 export interface Server {
@@ -208,5 +210,13 @@ export interface ApiErrorBody {
     message: string;
     /** Field-level detail for validation failures. */
     details?: Record<string, string[]>;
+    /**
+     * Set on EMAIL_NOT_VERIFIED: the address awaiting confirmation.
+     *
+     * Kept out of `details`, which is strictly per-field validation messages -- the
+     * sign-in form has no email field to attach it to, and someone who signed in with
+     * their username may not remember which address they used.
+     */
+    email?: string;
   };
 }

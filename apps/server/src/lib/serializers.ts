@@ -94,7 +94,11 @@ export function toPublicUser(row: PublicUserRow | UserRow): PublicUser {
 
 /** Adds the fields a user is allowed to see about themselves. */
 export function toSelfUser(row: UserRow): SelfUser {
-  return { ...toPublicUser(row), email: row.email };
+  return {
+    ...toPublicUser(row),
+    email: row.email,
+    emailVerified: row.emailVerifiedAt !== null,
+  };
 }
 
 export function toServer(row: ServerRow, memberCount?: number): Server {
