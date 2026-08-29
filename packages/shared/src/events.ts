@@ -8,6 +8,7 @@
 
 import type {
   Channel,
+  Emoji,
   DMChannel,
   Friendship,
   Member,
@@ -90,6 +91,8 @@ export interface ServerToClientEvents {
 
   'server:create': (server: Server) => void;
   'server:update': (server: Server) => void;
+  'emoji:create': (emoji: Emoji) => void;
+  'emoji:delete': (payload: { serverId: string; emojiId: string }) => void;
   'server:delete': (payload: { serverId: string }) => void;
 
   'channel:create': (channel: Channel) => void;

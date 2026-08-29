@@ -18,7 +18,7 @@
  * is what lets the composer upload in the background while the user is still typing.
  */
 
-import { and, eq, isNull, lt } from 'drizzle-orm';
+import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 import { imageSize } from 'image-size';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
@@ -26,9 +26,10 @@ import {
   IMAGE_MIME_TYPES,
   LIMITS,
   Permission,
+  createEmojiSchema,
 } from '@rockscord/shared';
-import { attachments, servers, users } from '../db/schema.js';
-import { ApiError } from '../lib/errors.js';
+import { attachments, emojis, servers, users } from '../db/schema.js';
+import { ApiError, fromZodError } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
 import { assertPermission, requireMember } from '../lib/permissions.js';
 import { sanitizeFileName } from '../lib/sanitize.js';
@@ -208,6 +209,81 @@ export default async function fileRoutes(app: FastifyInstance): Promise<void> {
       });
 
       return { iconUrl: url };
+    },
+  );
+
+  /* -------------------------------------------------------------------- */
+  /* Custom emoji                                                          */
+  /* -------------------------------------------------------------------- */
+
+  /**
+   * Upload a custom emoji for a server.
+   *
+   * The name arrives as a query parameter rather than a form field because
+   * `acceptUpload` reads a single file part and knows nothing about the rest of the
+   * multipart body. A name is not secret, so a query string costs nothing here and keeps
+   * the shared upload helper unchanged.
+   */
+  app.post(
+    '/emoji/:serverId',
+    { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } },
+    async (request) => {
+      const { serverId } = request.params as { serverId: string };
+
+      const context = await requireMember(db, serverId, request.user!.id);
+      assertPermission(context, Permission.MANAGE_SERVER, 'manage emoji');
+
+      const parsed = createEmojiSchema.safeParse(request.query);
+      if (!parsed.success) throw fromZodError(parsed.error);
+      const { name } = parsed.data;
+
+      const [existing] = await db
+        .select({ id: emojis.id })
+        .from(emojis)
+        .where(and(eq(emojis.serverId, serverId), eq(emojis.name, name)))
+        .limit(1);
+      if (existing) {
+        throw ApiError.alreadyExists(`This server already has an emoji called :${name}:`);
+      }
+
+      const [counted] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(emojis)
+        .where(eq(emojis.serverId, serverId));
+      if (Number(counted?.count ?? 0) >= LIMITS.MAX_EMOJIS_PER_SERVER) {
+        throw ApiError.conflict(
+          `A server can have at most ${LIMITS.MAX_EMOJIS_PER_SERVER} custom emoji.`,
+        );
+      }
+
+      const upload = await acceptUpload(request, {
+        imagesOnly: true,
+        maxBytes: LIMITS.MAX_EMOJI_BYTES,
+      });
+
+      const storage = await getStorage();
+      const key = buildStorageKey(upload.fileName);
+      await storage.put(key, upload.buffer, upload.contentType);
+
+      const row = {
+        id: newId(),
+        serverId,
+        name,
+        imageUrl: storage.urlFor(key),
+        createdBy: request.user!.id,
+        createdAt: Date.now(),
+      };
+      await db.insert(emojis).values(row);
+
+      const emoji = {
+        id: row.id,
+        serverId: row.serverId,
+        name: row.name,
+        imageUrl: row.imageUrl,
+        createdAt: row.createdAt,
+      };
+      emitToServer(ctx, serverId, 'emoji:create', emoji);
+      return { emoji };
     },
   );
 }

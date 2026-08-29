@@ -72,6 +72,23 @@ export const deleteAccountSchema = z.object({
   password: z.string().min(1, 'Enter your password').max(LIMITS.PASSWORD_MAX),
 });
 
+/**
+ * Emoji names are deliberately narrow: lowercase letters, digits, and underscores.
+ *
+ * They appear inside `<:name:id>` in message text, so anything that could contain `:`
+ * or `>` would let a name break the token it lives in. Restricting the alphabet removes
+ * that class of problem rather than escaping around it.
+ */
+export const emojiNameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(2, 'Emoji names need at least 2 characters')
+  .max(32, 'Emoji names can be at most 32 characters')
+  .regex(/^[a-z0-9_]+$/, 'Use lowercase letters, numbers, and underscores only');
+
+export const createEmojiSchema = z.object({ name: emojiNameSchema });
+
 export const updateProfileSchema = z.object({
   displayName: z.string().trim().min(1).max(LIMITS.DISPLAY_NAME_MAX).optional(),
   bio: z.string().trim().max(LIMITS.BIO_MAX).nullable().optional(),

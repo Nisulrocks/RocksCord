@@ -169,6 +169,19 @@ REQUIRE_EMAIL_VERIFICATION=true npm start
 - [ ] Editing a character out of the link gives "that link is not valid"
 - [ ] Requesting a resend, then using the **older** link, is rejected
 
+### Custom emoji
+
+- [ ] Server settings → **Emoji** → choose an image, name it, add it
+- [ ] It appears in the list, and in the picker under **This server**
+- [ ] Picking it inserts `<:name:id>` and the sent message shows the image inline
+- [ ] The emoji sits on the text baseline without making the line taller
+- [ ] A second person in the server sees it appear without refreshing
+- [ ] Names are rejected if they contain spaces, colons, `>` or capitals
+- [ ] Uploading a non-image is refused
+- [ ] A member without **Manage server** sees no Emoji tab and cannot upload
+- [ ] Deleting one leaves old messages showing `:name:` rather than a broken image
+- [ ] Someone from another server sees `:name:` for an emoji they do not have
+
 ### Jumping to a message
 
 - [ ] Reply to a message from well above the visible area, then click the reply preview —

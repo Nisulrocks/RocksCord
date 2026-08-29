@@ -31,6 +31,7 @@ import { env } from '../env.js';
 import type { AppContext, Gateway, SocketData } from '../context.js';
 import {
   channels,
+  emojis,
   dmParticipants,
   memberRoles,
   members,
@@ -222,6 +223,15 @@ async function buildReadyPayload(db: Database, userId: string): Promise<ReadyPay
 
   const voiceStates = await hydrateVoiceStates(db, getAllVoiceStates());
 
+  /*
+   * Every emoji from every server the user is in, up front. Messages reference them by
+   * id, so fetching lazily would mean a message rendering as a gap until a round trip
+   * finished -- and the whole set is a few hundred bytes.
+   */
+  const emojiRows = serverIds.length
+    ? await db.select().from(emojis).where(inArray(emojis.serverId, serverIds))
+    : [];
+
   return {
     user: toSelfUser(userRow),
     servers: serverRows.map((row) => toServer(row, countMap.get(row.id) ?? 0)),
@@ -236,6 +246,13 @@ async function buildReadyPayload(db: Database, userId: string): Promise<ReadyPay
     friends,
     readStates: readStatePayload,
     voiceStates,
+    emojis: emojiRows.map((row) => ({
+      id: row.id,
+      serverId: row.serverId,
+      name: row.name,
+      imageUrl: row.imageUrl,
+      createdAt: row.createdAt,
+    })),
     presences: presence.getSnapshots(visibleUserIds),
   };
 }

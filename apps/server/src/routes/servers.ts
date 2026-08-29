@@ -17,7 +17,7 @@
  *   GET    /api/servers/:id/audit-log       moderation history
  */
 
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
   ADMIN_PERMISSIONS,
@@ -34,6 +34,7 @@ import {
   auditLogs,
   bans,
   channels,
+  emojis,
   memberRoles,
   members,
   roles,
@@ -628,5 +629,58 @@ export default async function serverRoutes(app: FastifyInstance): Promise<void> 
         createdAt: row.createdAt,
       })),
     };
+  });
+
+  /* -------------------------------------------------------------------- */
+  /* Custom emoji                                                          */
+  /* -------------------------------------------------------------------- */
+
+  app.get('/:serverId/emojis', async (request) => {
+    const { serverId } = request.params as { serverId: string };
+    /*
+     * Membership is the only gate. Anyone who can read a channel already sees these
+     * rendered in messages, so restricting the list would protect nothing.
+     */
+    await requireMember(db, serverId, request.user!.id);
+
+    const rows = await db
+      .select()
+      .from(emojis)
+      .where(eq(emojis.serverId, serverId))
+      .orderBy(asc(emojis.name));
+
+    return {
+      emojis: rows.map((row) => ({
+        id: row.id,
+        serverId: row.serverId,
+        name: row.name,
+        imageUrl: row.imageUrl,
+        createdAt: row.createdAt,
+      })),
+    };
+  });
+
+  app.delete('/:serverId/emojis/:emojiId', async (request) => {
+    const { serverId, emojiId } = request.params as { serverId: string; emojiId: string };
+
+    const context = await requireMember(db, serverId, request.user!.id);
+    assertPermission(context, Permission.MANAGE_SERVER, 'manage emoji');
+
+    const [row] = await db
+      .select({ id: emojis.id })
+      .from(emojis)
+      .where(and(eq(emojis.id, emojiId), eq(emojis.serverId, serverId)))
+      .limit(1);
+    if (!row) throw ApiError.notFound('That emoji does not exist');
+
+    await db.delete(emojis).where(eq(emojis.id, emojiId));
+
+    /*
+     * The image itself is left in storage on purpose. Messages already sent still point
+     * at that URL, and removing it would turn every past use into a broken image -- the
+     * same reasoning that tombstones deleted messages instead of erasing them.
+     */
+    emitToServer(ctx, serverId, 'emoji:delete', { serverId, emojiId });
+    return { ok: true };
   });
 }

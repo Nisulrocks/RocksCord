@@ -592,6 +592,7 @@ export function Composer({
 
           {emojiOpen && (
             <EmojiPicker
+              serverId={serverId}
               onSelect={(emoji) => {
                 const element = textareaRef.current;
                 const caret = element?.selectionStart ?? draft.length;

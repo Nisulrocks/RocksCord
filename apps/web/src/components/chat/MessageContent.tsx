@@ -227,6 +227,7 @@ function MentionText({ text, serverId }: { text: string; serverId?: string | nul
   const userById = useAppStore((s) => s.userById);
   const roles = useAppStore((s) => s.roles);
   const channels = useAppStore((s) => s.channels);
+  const emojis = useAppStore((s) => s.emojis);
   const openProfileCard = useUiStore((s) => s.openProfileCard);
 
   return (
@@ -281,6 +282,32 @@ function MentionText({ text, serverId }: { text: string; serverId?: string | nul
             >
               #{channel.name}
             </Link>
+          );
+        }
+
+        if (token.type === 'emoji') {
+          const emoji = emojis[token.id];
+          /*
+           * Fall back to `:name:` when the emoji is unknown -- a message from a server
+           * you have since left, or one deleted after it was used. The name travels in
+           * the token precisely so this reads as something rather than vanishing.
+           *
+           * `src` comes from the server's own storage URL and the alt text is the
+           * validated name, so neither is attacker-controlled markup: this is still an
+           * element built from data, never parsed HTML.
+           */
+          if (!emoji) return <Fragment key={index}>:{token.name}:</Fragment>;
+          return (
+            <img
+              key={index}
+              src={emoji.imageUrl}
+              alt={`:${emoji.name}:`}
+              title={`:${emoji.name}:`}
+              loading="lazy"
+              // Inline and baseline-aligned so a line of text with emoji in it keeps its
+              // rhythm instead of growing taller than its neighbours.
+              className="inline-block h-[1.375em] w-[1.375em] object-contain align-[-0.3em]"
+            />
           );
         }
 

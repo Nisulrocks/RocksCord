@@ -122,6 +122,8 @@ function registerHandlers(s: RocksCordSocket): void {
   s.on('server:create', (server) => store().upsertServer(server));
   s.on('server:update', (server) => store().upsertServer(server));
   s.on('server:delete', ({ serverId }) => store().removeServer(serverId));
+  s.on('emoji:create', (emoji) => store().upsertEmoji(emoji));
+  s.on('emoji:delete', ({ emojiId }) => store().removeEmoji(emojiId));
 
   s.on('channel:create', (channel) => store().upsertChannel(channel));
   s.on('channel:update', (channel) => store().upsertChannel(channel));

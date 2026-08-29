@@ -13,9 +13,12 @@ Runs locally, ships as a Windows app, deploys free.
 
 ## Features
 
-**Chat** — text channels, DMs, replies, edits, reactions, mentions, pins, an emoji picker,
-markdown formatting, and full-text search. Clicking a reply preview or a search hit jumps
-to that message and flashes it, loading a window around it if it is not in memory.
+**Chat** — text channels, DMs, replies, edits, reactions, mentions, pins, markdown
+formatting, and full-text search. Clicking a reply preview or a search hit jumps to that
+message and flashes it, loading a window around it if it is not in memory.
+
+**Custom emoji** — per server, uploaded and managed in server settings, usable from the
+picker as `:name:`.
 
 **Voice and video** — peer-to-peer WebRTC audio, camera, screen sharing, mute, deafen,
 speaking detection, per-peer volume, and device selection with a live mic meter.
@@ -151,7 +154,7 @@ After that, `git push` deploys. Full walkthrough in
 ## Testing
 
 ```bash
-npm test          # 175 tests
+npm test          # 189 tests
 npm run smoke     # end-to-end against a running server
 ```
 

@@ -294,6 +294,36 @@ export const dmParticipants = sqliteTable(
 /* Messages                                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Custom emoji, owned by a server.
+ *
+ * `name` is the stable identity, not the id: messages embed `<:name:id>` so a client that
+ * has never seen the emoji can still render something sensible, and the unique index on
+ * (server, name) is what makes `:cat:` unambiguous inside one server. Two servers may
+ * each have a `:cat:`; the id in the token says which.
+ *
+ * The image is a normal upload, so it goes through the same content sniffing and storage
+ * driver as avatars and attachments rather than a second pipeline.
+ */
+export const emojis = sqliteTable(
+  'emojis',
+  {
+    id: text('id').primaryKey(),
+    serverId: text('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    imageUrl: text('image_url').notNull(),
+    /** Null once the uploader deletes their account; the emoji outlives them. */
+    createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: integer('created_at').notNull().default(now),
+  },
+  (t) => [
+    uniqueIndex('emojis_server_name_unique').on(t.serverId, t.name),
+    index('emojis_server_idx').on(t.serverId),
+  ],
+);
+
 export const messages = sqliteTable(
   'messages',
   {
@@ -571,3 +601,4 @@ export type FriendshipRow = typeof friendships.$inferSelect;
 export type InviteRow = typeof invites.$inferSelect;
 export type ReadStateRow = typeof readStates.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
+export type EmojiRow = typeof emojis.$inferSelect;

@@ -21,11 +21,12 @@ import { api, ApiClientError } from '../../lib/api';
 import { useAppStore } from '../../store/useAppStore';
 import { useUiStore } from '../../store/useUiStore';
 import { usePermissions, useHighestRolePosition } from '../../hooks/usePermissions';
+import { EmojiTab } from './settings/EmojiTab';
 import { Modal } from '../ui/Modal';
 import { Avatar, ServerAvatar } from '../ui/Avatar';
 import { Button, Field, Input, Textarea, Spinner, Toggle } from '../ui/primitives';
 
-type Tab = 'overview' | 'roles' | 'members' | 'invites' | 'audit';
+type Tab = 'overview' | 'roles' | 'emoji' | 'members' | 'invites' | 'audit';
 
 /** Every permission, grouped for a readable editor. */
 const PERMISSION_GROUPS: { title: string; permissions: { bit: number; label: string }[] }[] = [
@@ -94,6 +95,11 @@ export function ServerSettingsModal({
   const tabs: { key: Tab; label: string; visible: boolean }[] = [
     { key: 'overview', label: 'Overview', visible: true },
     { key: 'roles', label: 'Roles', visible: permissions.canInServer(Permission.MANAGE_ROLES) },
+    {
+      key: 'emoji',
+      label: 'Emoji',
+      visible: permissions.canInServer(Permission.MANAGE_SERVER),
+    },
     { key: 'members', label: 'Members', visible: true },
     {
       key: 'invites',
@@ -132,6 +138,7 @@ export function ServerSettingsModal({
       {tab === 'roles' && <RolesTab serverId={serverId} />}
       {tab === 'members' && <MembersTab serverId={serverId} />}
       {tab === 'invites' && <InvitesTab serverId={serverId} />}
+      {tab === 'emoji' && <EmojiTab serverId={serverId} />}
       {tab === 'audit' && <AuditTab serverId={serverId} />}
     </Modal>
   );

@@ -168,6 +168,16 @@ export interface ReadState {
   unread: boolean;
 }
 
+/** A custom emoji belonging to a server. */
+export interface Emoji {
+  id: string;
+  serverId: string;
+  /** Lowercase, `[a-z0-9_]`, unique within its server. Used as `:name:`. */
+  name: string;
+  imageUrl: string;
+  createdAt: number;
+}
+
 export interface VoiceParticipant {
   userId: string;
   channelId: string;
@@ -196,6 +206,8 @@ export interface ReadyPayload {
   friends: Friendship[];
   readStates: ReadState[];
   voiceStates: VoiceParticipant[];
+  /** Custom emoji for every server the user is in. */
+  emojis: Emoji[];
   /** Presence of everyone visible to this user (friends + co-members). */
   presences: { userId: string; status: UserStatus; customStatus: string | null }[];
 }

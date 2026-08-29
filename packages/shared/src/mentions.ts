@@ -15,6 +15,15 @@
 
 export const MENTION_PATTERN = /<@!?(?<user>[A-Za-z0-9_-]{1,64})>|<@&(?<role>[A-Za-z0-9_-]{1,64})>|<#(?<channel>[A-Za-z0-9_-]{1,64})>/g;
 
+/**
+ * A custom emoji reference: `<:name:id>`.
+ *
+ * The name travels with the id so a client that has never loaded that server's emoji
+ * still shows something -- it falls back to `:name:` rather than an empty gap. Both
+ * halves use a closed alphabet, so nothing inside a token can terminate it early.
+ */
+export const EMOJI_PATTERN = /<:(?<emojiName>[a-z0-9_]{2,32}):(?<emojiId>[A-Za-z0-9_-]{1,64})>/g;
+
 export interface ParsedMentions {
   userIds: string[];
   roleIds: string[];
@@ -52,7 +61,8 @@ export type MessageToken =
   | { type: 'user'; id: string }
   | { type: 'role'; id: string }
   | { type: 'channel'; id: string }
-  | { type: 'everyone'; value: string };
+  | { type: 'everyone'; value: string }
+  | { type: 'emoji'; id: string; name: string };
 
 /**
  * Split content into renderable tokens. The client walks this instead of using
@@ -64,7 +74,7 @@ export function tokenizeMentions(content: string): MessageToken[] {
   let lastIndex = 0;
 
   const pattern = new RegExp(
-    `${MENTION_PATTERN.source}|(?<everyone>(?<=^|\s)@(?:everyone|here)\b)`,
+    `${MENTION_PATTERN.source}|${EMOJI_PATTERN.source}|(?<everyone>(?<=^|\s)@(?:everyone|here)\b)`,
     'g',
   );
 
@@ -77,6 +87,8 @@ export function tokenizeMentions(content: string): MessageToken[] {
     if (g.user) tokens.push({ type: 'user', id: g.user });
     else if (g.role) tokens.push({ type: 'role', id: g.role });
     else if (g.channel) tokens.push({ type: 'channel', id: g.channel });
+    else if (g.emojiId && g.emojiName)
+      tokens.push({ type: 'emoji', id: g.emojiId, name: g.emojiName });
     else if (g.everyone) tokens.push({ type: 'everyone', value: g.everyone });
     lastIndex = index + match[0].length;
   }
@@ -91,3 +103,5 @@ export function tokenizeMentions(content: string): MessageToken[] {
 export const userMention = (id: string) => `<@${id}>`;
 export const roleMention = (id: string) => `<@&${id}>`;
 export const channelMention = (id: string) => `<#${id}>`;
+/** The token a composer inserts for a custom emoji. */
+export const emojiToken = (name: string, id: string) => `<:${name}:${id}>`;

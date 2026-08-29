@@ -25,6 +25,16 @@ export const LIMITS = {
   MAX_UPLOAD_BYTES: 8 * 1024 * 1024,
   /** Beyond this, a WebRTC full mesh starts to strain a typical uplink. */
   VOICE_CHANNEL_SOFT_CAP: 8,
+
+  /**
+   * Custom emoji per server.
+   *
+   * Every member downloads every emoji the first time they open the server, so this is a
+   * bandwidth ceiling as much as a product one.
+   */
+  MAX_EMOJIS_PER_SERVER: 50,
+  /** Emoji render at roughly 22px; anything larger is bytes nobody sees. */
+  MAX_EMOJI_BYTES: 256 * 1024,
   MAX_SERVERS_PER_USER: 100,
   MAX_CHANNELS_PER_SERVER: 200,
   MAX_ROLES_PER_SERVER: 50,

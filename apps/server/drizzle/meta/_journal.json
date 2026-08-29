@@ -22,6 +22,13 @@
       "when": 1787855239634,
       "tag": "0002_account_deletion",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787987129733,
+      "tag": "0003_custom_emoji",
+      "breakpoints": true
     }
   ]
 }

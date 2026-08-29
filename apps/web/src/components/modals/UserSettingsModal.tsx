@@ -19,6 +19,7 @@ import { api, ApiClientError } from '../../lib/api';
 import { setPresenceStatus } from '../../lib/socket';
 import { useAppStore } from '../../store/useAppStore';
 import { useUiStore } from '../../store/useUiStore';
+import { AboutSection } from './settings/AboutSection';
 import { AppearanceTab } from './settings/AppearanceTab';
 import { DeleteAccount } from './settings/DeleteAccount';
 import { VoiceTab } from './settings/VoiceTab';
@@ -72,6 +73,12 @@ export function UserSettingsModal({
       {tab === 'account' && <AccountTab user={user} />}
       {tab === 'appearance' && <AppearanceTab />}
       {tab === 'voice' && <VoiceTab />}
+
+      {/* Outside the tabs on purpose: "which version am I on" is asked when something is
+          misbehaving, and hunting through tabs for it is the wrong time to be hunting. */}
+      <div className="-mx-5 -mb-4 mt-5">
+        <AboutSection />
+      </div>
     </Modal>
   );
 }

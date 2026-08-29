@@ -21,6 +21,7 @@ import type {
   Member,
   Message,
   PublicUser,
+  Emoji,
   ReadState,
   ReadyPayload,
   Role,
@@ -70,6 +71,8 @@ interface AppState {
   incomingRequests: Friendship[];
   outgoingRequests: Friendship[];
 
+  /** Custom emoji, keyed by id. Flat because messages reference them by id alone. */
+  emojis: Record<string, Emoji>;
   readStates: Record<string, ReadState>;
   /**
    * The message to flash after jumping to it, cleared on a timer.
@@ -137,6 +140,9 @@ interface AppState {
 
   markRead: (channelId: string, messageId: string) => void;
   setReadStates: (states: ReadState[]) => void;
+  setEmojis: (emojis: Emoji[]) => void;
+  upsertEmoji: (emoji: Emoji) => void;
+  removeEmoji: (emojiId: string) => void;
   setHighlightedMessage: (messageId: string | null) => void;
 
   setVoiceParticipants: (channelId: string, participants: VoiceParticipant[]) => void;
@@ -184,6 +190,7 @@ const emptyState = {
   friends: [],
   incomingRequests: [],
   outgoingRequests: [],
+  emojis: {},
   readStates: {},
   highlightedMessageId: null,
   presence: {},
@@ -226,6 +233,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       const readStates: Record<string, ReadState> = {};
       for (const state of payload.readStates) readStates[state.channelId] = state;
 
+      const emojis: Record<string, Emoji> = {};
+      for (const emoji of payload.emojis ?? []) emojis[emoji.id] = emoji;
+
       const presence: Record<string, { status: UserStatus; customStatus: string | null }> = {};
       for (const entry of payload.presences) {
         presence[entry.userId] = { status: entry.status, customStatus: entry.customStatus };
@@ -239,6 +249,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         user: payload.user,
         hydrated: true,
+        emojis,
         servers,
         channels,
         roles,
@@ -647,6 +658,19 @@ export const useAppStore = create<AppState>((set, get) => ({
    * Cleared on a timer rather than by the component, so the highlight fades even if the
    * user scrolls away or navigates elsewhere before it would otherwise be dismissed.
    */
+  setEmojis: (list) =>
+    set({ emojis: Object.fromEntries(list.map((emoji) => [emoji.id, emoji])) }),
+
+  upsertEmoji: (emoji) =>
+    set((state) => ({ emojis: { ...state.emojis, [emoji.id]: emoji } })),
+
+  removeEmoji: (emojiId) =>
+    set((state) => {
+      const next = { ...state.emojis };
+      delete next[emojiId];
+      return { emojis: next };
+    }),
+
   setHighlightedMessage: (messageId) => {
     set({ highlightedMessageId: messageId });
     if (messageId === null) return;

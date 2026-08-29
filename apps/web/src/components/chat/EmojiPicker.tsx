@@ -9,18 +9,44 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import clsx from 'clsx';
+import { emojiToken } from '@rockscord/shared';
+import type { Emoji } from '@rockscord/shared';
+import { useAppStore } from '../../store/useAppStore';
 import { EMOJI_CATEGORIES, searchEmoji } from './emoji';
 
 export function EmojiPicker({
   onSelect,
   onClose,
+  serverId,
 }: {
   onSelect: (emoji: string) => void;
   onClose: () => void;
+  /** Custom emoji are per-server, so DMs simply have none. */
+  serverId?: string | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState(EMOJI_CATEGORIES[0]!.name);
+
+  const allEmojis = useAppStore((s) => s.emojis);
+  const custom = useMemo(
+    () =>
+      serverId
+        ? Object.values(allEmojis)
+            .filter((emoji) => emoji.serverId === serverId)
+            .sort((a, b) => a.name.localeCompare(b.name))
+        : [],
+    [allEmojis, serverId],
+  );
+
+  // Matched on name, so typing "cat" surfaces :party_cat: alongside the unicode ones.
+  const customMatches = useMemo(
+    () =>
+      query.trim()
+        ? custom.filter((emoji) => emoji.name.includes(query.trim().toLowerCase()))
+        : custom,
+    [custom, query],
+  );
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -76,17 +102,37 @@ export function EmojiPicker({
               No emoji match “{query}”
             </p>
           ) : (
-            <Grid emoji={results} onSelect={onSelect} />
+            <>
+              {customMatches.length > 0 && (
+                <div className="mb-3">
+                  <h4 className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wider text-ink-faint">
+                    This server
+                  </h4>
+                  <CustomGrid emojis={customMatches} onSelect={onSelect} />
+                </div>
+              )}
+              <Grid emoji={results} onSelect={onSelect} />
+            </>
           )
         ) : (
-          EMOJI_CATEGORIES.map((category) => (
+          <>
+            {custom.length > 0 && (
+              <section id="emoji-custom" className="mb-3">
+                <h4 className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wider text-ink-faint">
+                  This server
+                </h4>
+                <CustomGrid emojis={custom} onSelect={onSelect} />
+              </section>
+            )}
+            {EMOJI_CATEGORIES.map((category) => (
             <section key={category.name} id={`emoji-${category.name}`} className="mb-3">
               <h4 className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wider text-ink-faint">
                 {category.name}
               </h4>
               <Grid emoji={category.emoji} onSelect={onSelect} />
             </section>
-          ))
+            ))}
+          </>
         )}
       </div>
 
@@ -112,6 +158,35 @@ export function EmojiPicker({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Custom emoji insert `<:name:id>` rather than a character.
+ *
+ * That is the same string contract the unicode grid uses -- the composer only ever splices
+ * text into the draft -- so nothing above here needs to know the difference.
+ */
+function CustomGrid({
+  emojis,
+  onSelect,
+}: {
+  emojis: Emoji[];
+  onSelect: (emoji: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-8 gap-0.5">
+      {emojis.map((emoji) => (
+        <button
+          key={emoji.id}
+          title={`:${emoji.name}:`}
+          onClick={() => onSelect(emojiToken(emoji.name, emoji.id))}
+          className="flex h-9 items-center justify-center rounded transition-transform hover:scale-125 hover:bg-surface-3"
+        >
+          <img src={emoji.imageUrl} alt={`:${emoji.name}:`} className="h-6 w-6 object-contain" />
+        </button>
+      ))}
     </div>
   );
 }
