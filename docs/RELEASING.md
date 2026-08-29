@@ -21,9 +21,22 @@ repo would mean shipping an extractable GitHub token inside the exe.
 
 ### 2. A token
 
-**[github.com/settings/tokens](https://github.com/settings/tokens)** → generate a token
-with the **`repo`** scope. It is used only on your machine, at build time, to upload the
-installer. It never goes into the app.
+GitHub has two kinds, and the difference matters here.
+
+**Fine-grained** (the default now) — at
+[github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens):
+
+- **Repository access** → Only select repositories → `RocksCord`
+- **Permissions** → Repository permissions → **Contents: Read and write**
+
+That Contents permission is the one that matters. Without it the build succeeds and the
+upload fails with `403 Resource not accessible by personal access token`; the response
+header `x-accepted-github-permissions: contents=write` is GitHub naming what was missing.
+
+**Classic** — at [github.com/settings/tokens/new](https://github.com/settings/tokens/new),
+tick **`repo`**. Simpler, but grants far more than this needs.
+
+Either way it is used only on your machine, at build time. It never goes into the app.
 
 ```powershell
 $env:GH_TOKEN = "ghp_..."

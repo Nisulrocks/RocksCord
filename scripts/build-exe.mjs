@@ -98,11 +98,44 @@ run('node', [path.join(root, 'scripts', 'build-desktop.mjs')], root);
 console.log('\n=== Packaging with electron-builder ===');
 console.log('(the Electron runtime is downloaded and cached on the first run)\n');
 
-run(
-  'npx',
-  ['electron-builder', '--config', 'electron-builder.yml', ...buildArgs, ...publishArgs],
-  desktopDir,
-);
+try {
+  run(
+    'npx',
+    ['electron-builder', '--config', 'electron-builder.yml', ...buildArgs, ...publishArgs],
+    desktopDir,
+  );
+} catch (error) {
+  /*
+   * A publish failure buries one actionable line under a few hundred of repeated stack
+   * trace. The build itself has usually succeeded by this point, so the useful message is
+   * "the artifact is fine, the upload was refused, here is why".
+   */
+  if (releasing) {
+    console.error(`
+${'-'.repeat(76)}
+The build finished, but publishing to GitHub failed.
+
+If the output above says "Resource not accessible by personal access token",
+the token lacks permission to create releases. GitHub's token page now defaults
+to FINE-GRAINED tokens, where "repo scope" does not exist and each permission is
+granted separately.
+
+  Fix a fine-grained token:
+    github.com/settings/personal-access-tokens -> your token -> Edit
+      Repository access  ->  Only select repositories  ->  RocksCord
+      Permissions        ->  Repository permissions  ->  Contents: Read and write
+    Save, then run this command again.
+
+  Or create a classic token instead:
+    github.com/settings/tokens/new  ->  tick 'repo'
+
+The installer was still built and is ready to use or share by hand:
+  ${path.join(releaseDir, 'RocksCord-Setup-*.exe')}
+${'-'.repeat(76)}
+`);
+  }
+  process.exit(1);
+}
 
 /* -------------------------------------------------------------------------- */
 
