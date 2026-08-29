@@ -40,8 +40,24 @@ npmRebuild: false
 nodeGypRebuild: false
 buildDependenciesFromSource: false
 
+# Where the app looks for updates, and where `--publish` uploads them.
+#
+# It must be a location that can be read WITHOUT credentials: whatever is configured here
+# is written into the packaged app as `app-update.yml`, so a private repository would mean
+# shipping a GitHub token inside every copy of the exe -- extractable by anyone who has
+# one. A public releases repository keeps the source private while letting the artifacts
+# be fetched anonymously.
+publish:
+  provider: github
+  owner: Nisulrocks
+  repo: RocksCord-releases
+  releaseType: release
+
 win:
   icon: assets/icon.png
+  # Required for unsigned builds. electron-updater otherwise refuses to apply an update
+  # whose publisher it cannot verify, which for a build with no certificate is every one.
+  verifyUpdateCodeSignature: false
   target:
     - target: portable
     - target: nsis
@@ -49,7 +65,9 @@ win:
   signAndEditExecutable: true
 
 portable:
-  # A single double-clickable file, which is the primary deliverable.
+  # A single double-clickable file, for anyone who would rather not install. It cannot
+  # self-update: it runs from a temporary extraction that is discarded on exit, so there
+  # is nothing for an update to be written into. The app detects this and stays quiet.
   artifactName: RocksCord.exe
   # Unpack to a stable folder so repeated launches reuse the same extraction.
   unpackDirName: RocksCordPortable

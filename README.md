@@ -295,7 +295,8 @@ DiscordClone/
 │   └── src/main.ts           Boots the server in-process, opens the window
 │
 ├── scripts/                  setup, desktop staging, exe build, icons, smoke test
-└── docs/                     ARCHITECTURE.md, TESTING.md, DEPLOYMENT.md, EMAIL.md, SHARING.md
+└── docs/                     ARCHITECTURE.md, TESTING.md, DEPLOYMENT.md,
+                              EMAIL.md, SHARING.md, RELEASING.md
 ```
 
 ---
@@ -501,6 +502,16 @@ Uninstalling leaves `%APPDATA%\RocksCord` alone, so reinstalling keeps your chos
 and window position — and does not silently delete the local database of anyone running
 their own server.
 
+### Updates
+
+The installed app updates itself. It checks 30 seconds after launch and every six hours,
+downloads in the background, and offers a restart once the update is ready — applying it on
+next quit either way. **Help → Check for updates…** forces a check.
+
+Only the Electron shell needs this. The window loads the web client from the server, so
+changes to `apps/web` and `apps/server` already arrive on the next launch from a plain
+`git push`. See **[docs/RELEASING.md](docs/RELEASING.md)** for cutting a release.
+
 ### What happens when you run it
 
 Double-click → a splash window appears within about 100 ms → the embedded server starts on
@@ -654,9 +665,9 @@ tooling beyond kick/ban/audit log. Those are listed under
   how image CDNs work; signing every URL would break plain `<img src>`.
 - **Message history is not virtualised.** 400 messages are kept in memory per channel;
   older ones are re-fetched on scroll. Fine in practice, but not a virtualised list.
-- **The desktop shell does not self-update.** UI and server changes arrive from the server
-  on next launch, but the Electron shell (splash, window behaviour, installer) is baked
-  into the exe and needs a new installer.
+- **The portable exe cannot self-update.** It runs from a temporary extraction discarded on
+  exit, so there is nowhere to write an update into. The installer updates itself; the
+  portable build must be replaced by hand.
 - **Email verification is off.** The feature is complete and tested, but every free
   provider gates sending behind something — manual account approval, a domain you must
   own, or an SMTP port the host blocks — so nothing is enforced until one of them actually
@@ -674,9 +685,7 @@ Roughly in the order I would do them:
    verification are already in place, so this is largely a second route over the same parts.
 2. **Message virtualisation** — render only the visible window so a 50,000-message channel
    scrolls as smoothly as a new one.
-3. **Self-updating desktop shell** — `electron-updater` against GitHub Releases, so the
-   Electron half of the app stops needing a hand-delivered installer.
-4. **Read receipts and typing in the member list.**
+3. **Read receipts and typing in the member list.**
 5. **Threads** — the schema's `reply_to_id` already forms a tree; this is a UI problem.
 6. **An SFU for large voice channels**, behind a feature flag, so the mesh stays the free
    default.

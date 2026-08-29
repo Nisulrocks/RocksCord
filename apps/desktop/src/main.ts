@@ -28,6 +28,7 @@ import {
   shell,
 } from 'electron';
 import { getLogPath, installCrashHandlers, log, setLogFile, startLog } from './log.js';
+import { checkForUpdatesInteractive, initAutoUpdate } from './updater.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -606,6 +607,11 @@ function buildMenu(targetUrl: string): void {
       label: 'Help',
       submenu: [
         {
+          label: 'Check for updates…',
+          click: () => void checkForUpdatesInteractive(mainWindow),
+        },
+        { type: 'separator' },
+        {
           label: 'About RocksCord',
           click: () => {
             void dialog.showMessageBox({
@@ -784,6 +790,9 @@ if (!gotLock) {
     buildMenu(targetUrl);
     mainWindow = createWindow(targetUrl);
     log.info('window created');
+
+    // Starts its own delayed timer, so this does not compete with startup.
+    initAutoUpdate({ getWindow: () => mainWindow });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {

@@ -339,6 +339,20 @@ Settings → Voice. The first four need no second user.
       the member list, and the message composer
 - [ ] Scrollbars and form controls adopt the light scheme rather than staying dark
 
+### Automatic updates
+
+Needs a published release; see [RELEASING.md](RELEASING.md).
+
+- [ ] Install an older version, then publish a higher one
+- [ ] Within about 30 seconds of launch the log shows `auto-update: Checking for update`
+- [ ] It downloads without prompting, then offers **Restart now / Later**
+- [ ] **Later** is the default button, so Enter does not restart you
+- [ ] Choosing Later and quitting normally installs the update
+- [ ] Reopening shows the new version in **Help → About RocksCord**
+- [ ] **Help → Check for updates…** on the newest version says you are up to date
+- [ ] With no network, the check fails silently — no dialog, and the app still works
+- [ ] On the **portable** exe, Check for updates says it cannot self-update
+
 ### Interface
 
 - [ ] Right-click a message, a channel, a server, a member — context menus appear

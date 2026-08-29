@@ -51,12 +51,22 @@ const EXTERNALS = [
   '@supabase/supabase-js',
   // Dev-only pretty logger; production logs straight to stdout.
   'pino-pretty',
+  // Installed as a real module instead; see RUNTIME_DEPENDENCIES.
+  'electron-updater',
 ];
 
-/** Native dependencies that get installed into the staged app root. */
+/**
+ * Dependencies installed into the staged app root rather than bundled.
+ *
+ * The two native ones cannot be bundled at all. `electron-updater` is here for a
+ * different reason: it resolves `app-update.yml` relative to its own location inside the
+ * asar, and inlining it into main.cjs breaks that lookup -- the updater then reports no
+ * configuration and silently never checks.
+ */
 const RUNTIME_DEPENDENCIES = {
   '@libsql/client': '^0.17.4',
   '@node-rs/argon2': '^2.1.0',
+  'electron-updater': '^6.8.9',
 };
 
 function run(command, args, cwd) {

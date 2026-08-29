@@ -18,7 +18,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -49,6 +49,37 @@ The --server value must start with http:// or https:// — got "${url}"
   process.env.ROCKSCORD_SERVER_URL = url;
 }
 
+/*
+ * `--release` publishes to the update feed instead of only building locally.
+ *
+ * Guarded rather than passed through blindly, because publishing has two preconditions
+ * that fail unhelpfully: without GH_TOKEN electron-builder reports a generic 401, and
+ * without a version bump it uploads over an existing release that no installed copy will
+ * ever see -- the updater compares versions, so a re-published 1.0.0 is invisible.
+ */
+const releasing = argv.includes('--release');
+const publishArgs = releasing ? ['--publish', 'always'] : [];
+const buildArgs = passthrough.filter((arg) => arg !== '--release');
+
+if (releasing) {
+  if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
+    console.error(`
+--release needs a GitHub token with 'repo' scope, so electron-builder can upload
+the installer to the releases repository.
+
+  PowerShell:  $env:GH_TOKEN = "ghp_..."
+  bash:        export GH_TOKEN=ghp_...
+
+Create one at https://github.com/settings/tokens
+`);
+    process.exit(1);
+  }
+
+  const version = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  console.log(`\n=== Releasing version ${version} ===`);
+  console.log('Installed copies only see this if the version is higher than theirs.\n');
+}
+
 function run(command, args, cwd) {
   execFileSync(command, args, {
     cwd,
@@ -69,7 +100,7 @@ console.log('(the Electron runtime is downloaded and cached on the first run)\n'
 
 run(
   'npx',
-  ['electron-builder', '--config', 'electron-builder.yml', ...passthrough],
+  ['electron-builder', '--config', 'electron-builder.yml', ...buildArgs, ...publishArgs],
   desktopDir,
 );
 
