@@ -8,15 +8,27 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Hash, Plus, Settings, UserPlus, Volume2 } from 'lucide-react';
+import {
+  ChevronDown,
+  Hash,
+  HeadphoneOff,
+  MicOff,
+  Plus,
+  ScreenShare,
+  Settings,
+  UserPlus,
+  Video,
+  Volume2,
+} from 'lucide-react';
 import clsx from 'clsx';
 import { Permission } from '@rockscord/shared';
-import type { Channel } from '@rockscord/shared';
+import type { Channel, VoiceParticipant } from '@rockscord/shared';
 import { useAppStore } from '../../store/useAppStore';
 import { useUiStore } from '../../store/useUiStore';
 import { useVoiceStore } from '../../store/useVoiceStore';
 import { usePermissions } from '../../hooks/usePermissions';
 import { api } from '../../lib/api';
+import { setPeerVolume } from '../../lib/voice';
 import { useVoiceSession } from '../../hooks/useVoiceSession';
 import { Avatar } from '../ui/Avatar';
 import { Badge, IconButton } from '../ui/primitives';
@@ -340,48 +352,104 @@ function ChannelRow({
   );
 }
 
+/**
+ * One person inside a voice channel, as shown in the sidebar.
+ *
+ * The status icons are the whole reason this list exists: knowing who is in a call, and
+ * whether they can hear you or are on camera, is what you want *before* joining. They are
+ * lucide icons rather than emoji so they inherit colour and size like everything else --
+ * emoji render at whatever size and hue the platform decides, which is why muted and
+ * deafened used to look like different-sized stickers.
+ */
 function VoiceOccupant({
   participant,
 }: {
-  participant: {
-    userId: string;
-    user: { id: string; displayName: string; avatarUrl: string | null };
-    selfMute: boolean;
-    selfDeaf: boolean;
-    streaming: boolean;
-  };
+  participant: VoiceParticipant;
 }) {
   const speaking = useVoiceStore((s) => s.speaking[participant.userId] ?? false);
+  const currentUserId = useAppStore((s) => s.user?.id);
+  const openProfileCard = useUiStore((s) => s.openProfileCard);
+  const openContextMenu = useUiStore((s) => s.openContextMenu);
+  const toast = useUiStore((s) => s.toast);
+
+  const muted = participant.selfMute || participant.serverMute;
+  const deafened = participant.selfDeaf || participant.serverDeaf;
+  const isSelf = participant.userId === currentUserId;
+
+  const onContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+
+    const items: { label: string; onSelect: () => void; separated?: boolean }[] = [
+      {
+        label: 'View profile',
+        onSelect: () =>
+          openProfileCard({
+            userId: participant.userId,
+            anchor: { x: event.clientX, y: event.clientY },
+          }),
+      },
+    ];
+
+    /*
+     * Per-person volume is local, so it only means anything while you are actually
+     * connected to them -- setting it for someone you cannot hear would silently do
+     * nothing. Hidden for yourself for the same reason.
+     */
+    if (!isSelf && useVoiceStore.getState().channelId === participant.channelId) {
+      items.push(
+        { label: 'Volume 100%', separated: true, onSelect: () => setPeerVolume(participant.userId, 1) },
+        { label: 'Volume 50%', onSelect: () => setPeerVolume(participant.userId, 0.5) },
+        { label: 'Mute for me', onSelect: () => setPeerVolume(participant.userId, 0) },
+      );
+    }
+
+    items.push({
+      label: 'Copy user ID',
+      separated: true,
+      onSelect: () => {
+        void navigator.clipboard.writeText(participant.userId);
+        toast('Copied', 'success');
+      },
+    });
+
+    openContextMenu({ x: event.clientX, y: event.clientY, items });
+  };
 
   return (
-    <li className="flex items-center gap-2 rounded px-1.5 py-1 text-[13px] hover:bg-surface-3">
-      <Avatar
-        userId={participant.userId}
-        name={participant.user.displayName}
-        src={participant.user.avatarUrl}
-        size={22}
-        speaking={speaking && !participant.selfMute}
-      />
-      <span
-        className={clsx(
-          'truncate',
-          participant.selfMute || participant.selfDeaf ? 'text-ink-faint' : 'text-ink-dim',
-        )}
+    <li>
+      <button
+        type="button"
+        onContextMenu={onContextMenu}
+        onClick={(event) =>
+          openProfileCard({
+            userId: participant.userId,
+            anchor: { x: event.clientX, y: event.clientY },
+          })
+        }
+        className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[13px] hover:bg-surface-3"
       >
-        {participant.user.displayName}
-      </span>
-      <span className="ml-auto flex items-center gap-1 text-ink-faint">
-        {participant.streaming && <span title="Sharing screen">🖥</span>}
-        {participant.selfDeaf ? (
-          <span title="Deafened" className="text-danger">
-            🔇
-          </span>
-        ) : participant.selfMute ? (
-          <span title="Muted" className="text-danger">
-            🎙
-          </span>
-        ) : null}
-      </span>
+        <Avatar
+          userId={participant.userId}
+          name={participant.user.displayName}
+          src={participant.user.avatarUrl}
+          size={22}
+          speaking={speaking && !muted}
+        />
+        <span className={clsx('truncate', muted || deafened ? 'text-ink-faint' : 'text-ink-dim')}>
+          {participant.user.displayName}
+        </span>
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {participant.camera && <Video size={13} className="text-online" aria-label="On camera" />}
+          {participant.streaming && (
+            <ScreenShare size={13} className="text-online" aria-label="Sharing screen" />
+          )}
+          {deafened ? (
+            <HeadphoneOff size={13} className="text-danger" aria-label="Deafened" />
+          ) : muted ? (
+            <MicOff size={13} className="text-danger" aria-label="Muted" />
+          ) : null}
+        </span>
+      </button>
     </li>
   );
 }

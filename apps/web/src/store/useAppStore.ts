@@ -590,6 +590,22 @@ export const useAppStore = create<AppState>((set, get) => ({
             const reactions = [...message.reactions];
             const index = reactions.findIndex((r) => r.emoji === emoji);
 
+            /*
+             * Applying your own reaction twice must not count twice.
+             *
+             * The client shows a reaction immediately and the server echoes the same
+             * change back a moment later, so this runs twice for every tap you make. The
+             * count is an aggregate, so a blind increment turned one heart into two.
+             *
+             * Only your own repeats can be detected: `me` says whether *you* have reacted,
+             * while everyone else is summed into a number with no identity attached. That
+             * is enough, because the duplicate only ever arises for the person who acted --
+             * the server sends each event once.
+             */
+            if (userId === myId && index !== -1 && reactions[index]!.me === added) {
+              return message;
+            }
+
             if (added) {
               if (index === -1) {
                 reactions.push({ emoji, count: 1, me: userId === myId });

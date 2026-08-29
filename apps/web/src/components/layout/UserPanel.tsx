@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { UserStatus } from '@rockscord/shared';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../../store/useAppStore';
 import { useUiStore } from '../../store/useUiStore';
 import { useVoiceStore } from '../../store/useVoiceStore';
@@ -53,6 +54,7 @@ export function UserPanel({ onLogout }: { onLogout: () => Promise<void> }) {
   if (!user) return null;
 
   const status = presence?.status ?? 'online';
+  const navigate = useNavigate();
   const voiceChannel = voice.channelId ? channels[voice.channelId] : null;
   const voiceServer = voiceChannel?.serverId ? servers[voiceChannel.serverId] : null;
 
@@ -86,7 +88,26 @@ export function UserPanel({ onLogout }: { onLogout: () => Promise<void> }) {
       {voice.channelId && voiceChannel && (
         <div className="border-b border-line bg-surface-0 px-2 py-2">
           <div className="flex items-center justify-between gap-2 px-1">
-            <div className="min-w-0">
+            {/*
+              * The whole label opens the call.
+              *
+              * Once you navigate to a text channel this strip is all that remains of the
+              * call on screen -- so with nothing to click, turning your camera on had no
+              * way to show you the camera. Going back meant hunting for the voice channel
+              * in the sidebar.
+              */}
+            <button
+              type="button"
+              onClick={() =>
+                navigate(
+                  voiceChannel.serverId
+                    ? `/channels/${voiceChannel.serverId}/${voiceChannel.id}`
+                    : `/dm/${voiceChannel.id}`,
+                )
+              }
+              title="Open the call"
+              className="min-w-0 flex-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-surface-3"
+            >
               <div
                 className={clsx(
                   'flex items-center gap-1.5 text-[13px] font-semibold',
@@ -110,7 +131,7 @@ export function UserPanel({ onLogout }: { onLogout: () => Promise<void> }) {
                 {voiceChannel.name}
                 {voiceServer ? ` / ${voiceServer.name}` : ''}
               </div>
-            </div>
+            </button>
             <div className="flex shrink-0 items-center gap-0.5">
               {/*
                 * The camera lives here as well as in the voice room, because this strip is
