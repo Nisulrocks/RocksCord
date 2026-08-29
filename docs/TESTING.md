@@ -169,6 +169,19 @@ REQUIRE_EMAIL_VERIFICATION=true npm start
 - [ ] Editing a character out of the link gives "that link is not valid"
 - [ ] Requesting a resend, then using the **older** link, is rejected
 
+### Jumping to a message
+
+- [ ] Reply to a message from well above the visible area, then click the reply preview —
+      it scrolls to the original and flashes it for about two seconds
+- [ ] The preview is not clickable when the original was deleted
+- [ ] Search for something old, click the hit — you land **on that message**, not at the
+      bottom of the channel
+- [ ] Right-click a message → **Copy link**, paste it in the address bar — it opens the
+      channel at that message
+- [ ] The same link works from a cold start (paste it into a new window and sign in)
+- [ ] After jumping, `?m=` is gone from the URL, so a refresh does not yank you back
+- [ ] Jump to something old, then scroll up — older messages still load from there
+
 ### Quick switcher
 
 - [ ] `Ctrl`+`K` (or `Cmd`+`K`) opens it from anywhere, including while typing a message

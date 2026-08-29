@@ -148,6 +148,14 @@ export const listMessagesSchema = z.object({
   /** Fetch messages older than this message id (keyset pagination). */
   before: z.string().max(64).optional(),
   after: z.string().max(64).optional(),
+  /**
+   * Centre the page on this message instead of paging from one end.
+   *
+   * What "jump to a message" needs: a search hit or a reply from last week is nowhere
+   * near the tail the client has loaded, and walking `before` backwards until it appears
+   * could take dozens of round trips.
+   */
+  around: z.string().max(64).optional(),
   limit: z.coerce
     .number()
     .int()

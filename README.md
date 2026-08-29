@@ -14,7 +14,8 @@ Runs locally, ships as a Windows app, deploys free.
 ## Features
 
 **Chat** — text channels, DMs, replies, edits, reactions, mentions, pins, an emoji picker,
-markdown formatting, and full-text search.
+markdown formatting, and full-text search. Clicking a reply preview or a search hit jumps
+to that message and flashes it, loading a window around it if it is not in memory.
 
 **Voice and video** — peer-to-peer WebRTC audio, camera, screen sharing, mute, deafen,
 speaking detection, per-peer volume, and device selection with a live mic meter.

@@ -5,7 +5,8 @@
  * the neighbouring message — an item cannot know whether it continues a run.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ArrowDown, Hash, Menu, Pin, Search, Users } from 'lucide-react';
 import clsx from 'clsx';
 import type { Message } from '@rockscord/shared';
@@ -52,10 +53,50 @@ export function ChatView({ channelId }: { channelId: string }) {
   const setMobilePane = useUiStore((s) => s.setMobilePane);
   const openModal = useUiStore((s) => s.openModal);
 
-  const { messages, loaded, loading, hasMore, scrollRef, isPinnedToBottom, scrollToBottom } =
-    useChannelMessages(channelId);
+  const {
+    messages,
+    loaded,
+    loading,
+    hasMore,
+    scrollRef,
+    isPinnedToBottom,
+    scrollToBottom,
+    jumpTo,
+  } = useChannelMessages(channelId);
 
   const serverId = channel?.serverId || null;
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const toast = useUiStore((s) => s.toast);
+
+  const handleJump = useCallback(
+    (messageId: string) => {
+      void jumpTo(messageId).then((found) => {
+        if (!found) toast('Could not find that message', 'error');
+      });
+    },
+    [jumpTo, toast],
+  );
+
+  /*
+   * `?m=<id>` in the URL means "open this channel at this message" -- what a copied link
+   * and a search result both produce. The parameter is stripped once used, so a refresh
+   * or a later scroll does not yank the view back to it.
+   */
+  const target = searchParams.get('m');
+  useEffect(() => {
+    if (!target || !channelId) return;
+    void jumpTo(target).then((found) => {
+      if (!found) toast('That message is no longer here', 'error');
+      setSearchParams(
+        (params) => {
+          params.delete('m');
+          return params;
+        },
+        { replace: true },
+      );
+    });
+  }, [target, channelId, jumpTo, setSearchParams, toast]);
 
   /**
    * Decide grouping and day dividers in one pass.
@@ -206,6 +247,7 @@ export function ChatView({ channelId }: { channelId: string }) {
                     channelId={channelId}
                     serverId={serverId}
                     showUnreadDivider={showUnreadDivider}
+                    onJumpTo={handleJump}
                   />
                 </div>
               ))}

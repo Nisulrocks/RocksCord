@@ -109,11 +109,15 @@ export function SearchModal({
   const openMessage = (hit: MessageHit) => {
     if (!hit.channel) return;
     onClose();
-    if (hit.channel.serverId) {
-      navigate(`/channels/${hit.channel.serverId}/${hit.channel.id}`);
-    } else {
-      navigate(`/dm/${hit.channel.id}`);
-    }
+    /*
+     * `?m=` carries the hit itself, not just its channel. Landing at the bottom of a
+     * busy channel and leaving someone to scroll for what they just searched for is the
+     * one thing a search result must not do.
+     */
+    const path = hit.channel.serverId
+      ? `/channels/${hit.channel.serverId}/${hit.channel.id}`
+      : `/dm/${hit.channel.id}`;
+    navigate(`${path}?m=${hit.id}`);
   };
 
   const tabs: { key: Scope; label: string; icon: React.ReactNode }[] = [

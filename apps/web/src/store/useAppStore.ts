@@ -71,6 +71,14 @@ interface AppState {
   outgoingRequests: Friendship[];
 
   readStates: Record<string, ReadState>;
+  /**
+   * The message to flash after jumping to it, cleared on a timer.
+   *
+   * Kept in the store rather than in ChatView because the jump is triggered from
+   * elsewhere -- a reply preview, a search result, a link -- and the target may be several
+   * components away from whatever asked for it.
+   */
+  highlightedMessageId: string | null;
   presence: Record<string, { status: UserStatus; customStatus: string | null }>;
   typing: Record<string, TypingEntry[]>;
   voiceParticipants: Record<string, VoiceParticipant[]>;
@@ -129,6 +137,7 @@ interface AppState {
 
   markRead: (channelId: string, messageId: string) => void;
   setReadStates: (states: ReadState[]) => void;
+  setHighlightedMessage: (messageId: string | null) => void;
 
   setVoiceParticipants: (channelId: string, participants: VoiceParticipant[]) => void;
   upsertVoiceParticipant: (participant: VoiceParticipant) => void;
@@ -176,6 +185,7 @@ const emptyState = {
   incomingRequests: [],
   outgoingRequests: [],
   readStates: {},
+  highlightedMessageId: null,
   presence: {},
   typing: {},
   voiceParticipants: {},
@@ -630,6 +640,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   /* -------------------------------------------------------------------- */
   /* Read state                                                            */
   /* -------------------------------------------------------------------- */
+
+  /**
+   * Flash a message after jumping to it.
+   *
+   * Cleared on a timer rather than by the component, so the highlight fades even if the
+   * user scrolls away or navigates elsewhere before it would otherwise be dismissed.
+   */
+  setHighlightedMessage: (messageId) => {
+    set({ highlightedMessageId: messageId });
+    if (messageId === null) return;
+    window.setTimeout(() => {
+      // Only clear if it is still the same one; a second jump owns the highlight now.
+      if (get().highlightedMessageId === messageId) set({ highlightedMessageId: null });
+    }, 2000);
+  },
 
   markRead: (channelId, messageId) =>
     set((state) => ({

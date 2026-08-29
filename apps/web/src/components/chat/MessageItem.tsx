@@ -29,6 +29,8 @@ interface MessageItemProps {
   serverId: string | null;
   /** Renders the "new messages" divider above this message. */
   showUnreadDivider?: boolean;
+  /** Scroll to another message in this channel, loading it if necessary. */
+  onJumpTo?: (messageId: string) => void;
 }
 
 function formatTime(timestamp: number): string {
@@ -48,6 +50,7 @@ export const MessageItem = memo(function MessageItem({
   channelId,
   serverId,
   showUnreadDivider,
+  onJumpTo,
 }: MessageItemProps) {
   const currentUser = useAppStore((s) => s.user);
   const membersByServer = useAppStore((s) => s.membersByServer);
@@ -56,6 +59,7 @@ export const MessageItem = memo(function MessageItem({
 
   const openProfileCard = useUiStore((s) => s.openProfileCard);
   const openContextMenu = useUiStore((s) => s.openContextMenu);
+  const highlighted = useAppStore((s) => s.highlightedMessageId === message.id);
   const openModal = useUiStore((s) => s.openModal);
   const setReplyTarget = useUiStore((s) => s.setReplyTarget);
   const editingMessageId = useUiStore((s) => s.editingMessageId);
@@ -124,6 +128,19 @@ export const MessageItem = memo(function MessageItem({
           toast('Copied', 'success');
         },
       },
+      {
+        label: 'Copy link',
+        onSelect: () => {
+          /*
+           * An absolute URL, because the point of copying one is to paste it somewhere
+           * else. `?m=` is read on load and jumps to the message, so the link survives a
+           * cold open rather than only working for someone already in the channel.
+           */
+          const base = serverId ? `/channels/${serverId}/${channelId}` : `/dm/${channelId}`;
+          void navigator.clipboard.writeText(`${window.location.origin}${base}?m=${message.id}`);
+          toast('Link copied', 'success');
+        },
+      },
     ];
 
     if (isAuthor) {
@@ -169,18 +186,29 @@ export const MessageItem = memo(function MessageItem({
       )}
 
       <article
+        // The anchor `jumpTo` scrolls to, and what a copied link resolves against.
+        data-message-id={message.id}
         onContextMenu={onContextMenu}
         className={clsx(
           'group relative px-4 transition-colors',
           grouped ? 'py-[1px]' : 'mt-3 py-[1px]',
-          mentionsMe
-            ? 'bg-mention hover:bg-idle/20 border-l-2 border-idle pl-[14px]'
-            : 'hover:bg-surface-3/50',
+          highlighted
+            ? // Wins over the mention tint: it is transient and answers "here it is".
+              'bg-accent-wash'
+            : mentionsMe
+              ? 'bg-mention hover:bg-idle/20 border-l-2 border-idle pl-[14px]'
+              : 'hover:bg-surface-3/50',
         )}
       >
         {/* Reply preview ------------------------------------------------- */}
         {message.replyTo && (
-          <div className="mb-0.5 flex items-center gap-1.5 pl-[52px] text-[13px] text-ink-faint">
+          <button
+            type="button"
+            // Jumping is only meaningful while the original still exists.
+            disabled={!onJumpTo || message.replyTo.deleted}
+            onClick={() => message.replyTo && onJumpTo?.(message.replyTo.id)}
+            className="mb-0.5 flex w-full items-center gap-1.5 pl-[52px] text-left text-[13px] text-ink-faint enabled:hover:text-ink-dim disabled:cursor-default"
+          >
             <CornerUpLeft size={12} className="shrink-0 -scale-y-100" />
             <Avatar
               userId={message.replyTo.authorId}
@@ -198,7 +226,7 @@ export const MessageItem = memo(function MessageItem({
                 message.replyTo.content
               )}
             </span>
-          </div>
+          </button>
         )}
 
         <div className="flex gap-4">

@@ -29,6 +29,11 @@ interface UseChannelMessagesResult {
   scrollToBottom: (behavior?: ScrollBehavior) => void;
   /** True when the user has scrolled up away from the newest message. */
   isPinnedToBottom: React.RefObject<boolean>;
+  /**
+   * Scroll to a message, loading a window around it first if it is not in memory.
+   * Resolves false when the message does not exist or cannot be reached.
+   */
+  jumpTo: (messageId: string) => Promise<boolean>;
 }
 
 /** How close to the bottom still counts as "at the bottom", in pixels. */
@@ -102,6 +107,61 @@ export function useChannelMessages(channelId: string | null): UseChannelMessages
       unsubscribeFromChannel(channelId);
     };
   }, [channelId, setMessages, setPaging, scrollToBottom]);
+
+  /* -------------------------------------------------------------------- */
+  /* Jump to a message                                                     */
+  /* -------------------------------------------------------------------- */
+
+  /**
+   * Bring a specific message into view.
+   *
+   * The message is often not loaded: a search hit or a reply to something from last week
+   * is nowhere near the tail the client holds, and paging backwards until it appears
+   * could take dozens of round trips. `?around=` fetches a window centred on it in one.
+   *
+   * Replacing the loaded range is deliberate. Splicing a distant window into the existing
+   * list would leave a silent gap in the middle — messages that look adjacent but are
+   * weeks apart — so the range is swapped and `hasMore` reset, which also restores the
+   * normal "scroll up to load older" behaviour from the new position.
+   */
+  const jumpTo = useCallback(
+    async (messageId: string): Promise<boolean> => {
+      if (!channelId) return false;
+
+      const scrollToIt = () => {
+        const element = document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`);
+        if (!element) return false;
+        element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        useAppStore.getState().setHighlightedMessage(messageId);
+        return true;
+      };
+
+      // Two frames: one for React to commit, one for layout to settle.
+      const afterPaint = () =>
+        new Promise<boolean>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve(scrollToIt())));
+        });
+
+      const loadedIds = useAppStore.getState().messagesByChannel[channelId] ?? [];
+      if (loadedIds.some((message) => message.id === messageId)) {
+        return afterPaint();
+      }
+
+      setPaging(channelId, { loading: true });
+      try {
+        const response = await api.get<PaginatedMessages>(
+          `/api/channels/${channelId}/messages?around=${encodeURIComponent(messageId)}&limit=50`,
+        );
+        setMessages(channelId, response.messages, response.hasMore);
+      } catch {
+        setPaging(channelId, { loading: false });
+        return false;
+      }
+
+      return afterPaint();
+    },
+    [channelId, setMessages, setPaging],
+  );
 
   /* -------------------------------------------------------------------- */
   /* Load older                                                            */
@@ -216,5 +276,6 @@ export function useChannelMessages(channelId: string | null): UseChannelMessages
     bottomRef,
     scrollToBottom,
     isPinnedToBottom,
+    jumpTo,
   };
 }

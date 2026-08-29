@@ -18,7 +18,7 @@
  * would also skip or duplicate messages whenever someone posts mid-scroll.
  */
 
-import { and, asc, desc, eq, gt, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
   LIMITS,
@@ -105,25 +105,58 @@ export default async function messageRoutes(app: FastifyInstance): Promise<void>
       'read message history here',
     );
 
-    const { before, after, limit } = parsed.data;
+    const { before, after, around, limit } = parsed.data;
 
-    const conditions = [eq(messages.channelId, channelId)];
-    if (before) conditions.push(lt(messages.id, before));
-    if (after) conditions.push(gt(messages.id, after));
+    let ordered: (typeof messages.$inferSelect)[];
+    let hasMore: boolean;
 
-    // One extra row tells us whether another page exists without a second COUNT query.
-    const rows = await db
-      .select()
-      .from(messages)
-      .where(and(...conditions))
-      .orderBy(after ? asc(messages.id) : desc(messages.id))
-      .limit(limit + 1);
+    if (around) {
+      /*
+       * A window centred on one message, for jumping to a search hit or a reply.
+       *
+       * Two queries rather than one because the halves run in opposite directions: ids
+       * are ULIDs, so "older" and "newer" are just `<` and `>` on the same ordering.
+       * `hasMore` reports the older side, which is the direction the client scrolls.
+       */
+      const half = Math.max(1, Math.floor(limit / 2));
 
-    const hasMore = rows.length > limit;
-    const page = hasMore ? rows.slice(0, limit) : rows;
+      const older = await db
+        .select()
+        .from(messages)
+        .where(and(eq(messages.channelId, channelId), lt(messages.id, around)))
+        .orderBy(desc(messages.id))
+        .limit(half + 1);
 
-    // Always hand the client oldest-first so it can append without re-sorting.
-    const ordered = after ? page : [...page].reverse();
+      const newer = await db
+        .select()
+        .from(messages)
+        .where(and(eq(messages.channelId, channelId), gte(messages.id, around)))
+        .orderBy(asc(messages.id))
+        .limit(half + 1);
+
+      hasMore = older.length > half;
+      ordered = [...(hasMore ? older.slice(0, half) : older)].reverse().concat(
+        newer.length > half ? newer.slice(0, half) : newer,
+      );
+    } else {
+      const conditions = [eq(messages.channelId, channelId)];
+      if (before) conditions.push(lt(messages.id, before));
+      if (after) conditions.push(gt(messages.id, after));
+
+      // One extra row tells us whether another page exists without a second COUNT query.
+      const rows = await db
+        .select()
+        .from(messages)
+        .where(and(...conditions))
+        .orderBy(after ? asc(messages.id) : desc(messages.id))
+        .limit(limit + 1);
+
+      hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+
+      // Always hand the client oldest-first so it can append without re-sorting.
+      ordered = after ? page : [...page].reverse();
+    }
     const hydrated = await hydrateMessages(db, ordered, request.user!.id);
 
     return {
