@@ -9,73 +9,63 @@ into the executable and used to need a hand-delivered file.
 
 ---
 
-## One-time setup
+## Releasing
 
-### 1. Make the repository public
+From a clean `main`:
 
-Updates are served from GitHub Releases, and the feed has to be readable without
-credentials — it is written into every copy of the app as `app-update.yml`, so a private
-repo would mean shipping an extractable GitHub token inside the exe.
-
-**Settings → General → Danger Zone → Change visibility → Public.**
-
-### 2. A token
-
-GitHub has two kinds, and the difference matters here.
-
-**Fine-grained** (the default now) — at
-[github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens):
-
-- **Repository access** → Only select repositories → `RocksCord`
-- **Permissions** → Repository permissions → **Contents: Read and write**
-
-That Contents permission is the one that matters. Without it the build succeeds and the
-upload fails with `403 Resource not accessible by personal access token`; the response
-header `x-accepted-github-permissions: contents=write` is GitHub naming what was missing.
-
-**Classic** — at [github.com/settings/tokens/new](https://github.com/settings/tokens/new),
-tick **`repo`**. Simpler, but grants far more than this needs.
-
-Either way it is used only on your machine, at build time. It never goes into the app.
-
-```powershell
-$env:GH_TOKEN = "ghp_..."
+```bash
+npm version patch
+git push --follow-tags
 ```
+
+`npm version` bumps `package.json`, commits, and creates a `v1.1.2` tag. Pushing the tag
+starts the **Release** workflow, which typechecks, runs the tests, builds the installer on
+a Windows runner, and publishes it to GitHub Releases.
+
+Use `minor` for new features and `major` for breaking changes; the number itself only has
+to increase, since that is what the updater compares.
+
+Watch it at **Actions → Release**. It takes roughly five minutes.
+
+### Why a tag rather than every push
+
+Most commits change the server or the web client, and those reach people through Render
+with no installer involved. Releasing on every push would have everyone's app download
+99 MB to gain nothing.
+
+### There is no token to manage
+
+The workflow uses the token Actions provides. Nothing expires, and nothing is stored on
+your machine — if you made a personal access token earlier, you can revoke it.
+
+The `contents: write` permission in the workflow is what lets that token create a release.
+Without it the upload fails with the same 403 a personal token missing that permission
+produces.
+
+### The tag has to match package.json
+
+The workflow checks this and fails loudly if they differ. It guards the one mistake the
+updater cannot recover from: tagging `v1.2.0` while the manifest still says `1.1.1`
+produces a release nobody is ever offered, because the updater compares the version
+compiled into the build, not the tag. Using `npm version` moves both together.
 
 ---
 
-## Releasing
+## Releasing by hand
 
-### 1. Bump the version
+Still works, and is useful when the workflow itself is what is broken:
 
-In the **root** `package.json`:
-
-```json
-"version": "1.0.1"
-```
-
-**This is the step that actually ships anything.** The updater compares versions, so
-publishing without a bump uploads a release that no installed copy will ever notice.
-
-### 2. Build and publish
-
-```bash
+```powershell
+$env:GH_TOKEN = "ghp_..."
 npm run build:exe -- --server=https://rockscord.onrender.com --release
 ```
 
-That stages the app, packages the installer, and uploads it to GitHub Releases along with
-`latest.yml`, which is the file installed copies read.
+That needs a token with **Contents: Read and write** on the repository — fine-grained at
+[github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens),
+or a classic one with `repo`.
 
 Without `--release` it builds locally and publishes nothing, which is what you want while
 iterating.
-
-### 3. Check the release exists
-
-Open `https://github.com/Nisulrocks/RocksCord/releases`. You should see the new version
-with `RocksCord-Setup-<version>.exe` and `latest.yml` attached.
-
-If electron-builder created it as a **draft**, publish it — a draft is invisible to the
-updater.
 
 ---
 
@@ -127,6 +117,23 @@ If you only touched the first three, do not cut a release — there is nothing i
 ---
 
 ## Troubleshooting
+
+**The workflow did not run**
+It triggers on tags, not commits. `git push` alone does nothing; you need
+`git push --follow-tags`, or push the tag explicitly.
+
+**The workflow failed on "Check the tag matches package.json"**
+The tag and the manifest disagree. Delete the tag, bump properly with `npm version`, and
+push again:
+
+```bash
+git tag -d v1.2.0
+git push origin :refs/tags/v1.2.0
+```
+
+**The workflow failed on tests or typecheck**
+Deliberate. A broken build published to the update feed would install itself on everyone's
+machine automatically, which is a considerably worse outcome than a failed release.
 
 **`--release` says a token is required**
 `GH_TOKEN` is not set in the shell you are running from. Setting it in another terminal

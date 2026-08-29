@@ -122,7 +122,16 @@ Without `--server` the app runs its own embedded server and works offline.
 The installed app updates itself: it checks on launch and every six hours, downloads in
 the background, and installs on next quit. Only the Electron shell needs this — the window
 loads the web client from your server, so `apps/web` and `apps/server` changes arrive on
-the next launch from a plain `git push`. See [docs/RELEASING.md](docs/RELEASING.md).
+the next launch from a plain `git push`.
+
+Cutting a desktop release is two commands; GitHub Actions builds and publishes it:
+
+```bash
+npm version patch
+git push --follow-tags
+```
+
+See [docs/RELEASING.md](docs/RELEASING.md).
 
 ---
 
