@@ -38,7 +38,11 @@ import {
   signAccessToken,
   verifyPassword,
 } from '../lib/auth.js';
-import { emailVerificationRequired, sendVerificationEmail } from '../lib/email/index.js';
+import {
+  emailVerificationRequired,
+  getEmailDriver,
+  sendVerificationEmail,
+} from '../lib/email/index.js';
 import { verificationResultPage } from '../lib/email/templates.js';
 import { ApiError, fromZodError } from '../lib/errors.js';
 import { newDiscriminator, newId } from '../lib/ids.js';
@@ -119,6 +123,11 @@ async function allocateDiscriminator(
 /* -------------------------------------------------------------------------- */
 
 const APP_NAME = 'RocksCord';
+
+/** True when the configured transport can reach a real mailbox. */
+function emailCanDeliver(): boolean {
+  return getEmailDriver().canDeliver;
+}
 
 /** How long the resend button is refused, to stop the endpoint being used as a mail cannon. */
 const RESEND_COOLDOWN_MS = 60_000;
@@ -777,6 +786,17 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
   app.get('/config', async () => ({
     allowRegistration: env.ALLOW_REGISTRATION,
     requireEmailVerification: emailVerificationRequired(),
+    /*
+     * Whether a transport that can actually deliver is configured.
+     *
+     * Separate from `requireEmailVerification` on purpose, because the two failures look
+     * identical from outside and have opposite fixes: a missing provider is a credentials
+     * problem, a provider present with the switch off is a one-variable problem. Making
+     * verification an explicit switch removed the accidental signal that used to
+     * distinguish them, so this restores it deliberately. It reveals no secret -- only
+     * that the server is capable of sending mail.
+     */
+    emailConfigured: emailCanDeliver(),
     limits: {
       usernameMax: LIMITS.USERNAME_MAX,
       passwordMin: LIMITS.PASSWORD_MIN,

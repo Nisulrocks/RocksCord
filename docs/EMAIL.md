@@ -162,7 +162,18 @@ Seeded demo accounts are created pre-verified, since their addresses are fiction
 
 ## Troubleshooting
 
-**`requireEmailVerification` is `false` in `/api/auth/config`**
+**Nothing seems to be linked**
+`/api/auth/config` reports two independent flags, and the pair tells you which of two
+opposite problems you have:
+
+| `emailConfigured` | `requireEmailVerification` | What it means |
+|---|---|---|
+| `false` | `false` | No provider. `EMAIL_API_KEY` is not reaching the process |
+| `true` | `false` | Provider is live, but the switch is off — set `REQUIRE_EMAIL_VERIFICATION=true` |
+| `true` | `true` | Fully on |
+| `false` | `true` | Forced on with no provider; links go to the server log only |
+
+**`requireEmailVerification` is `false`**
 That is the default. Set `REQUIRE_EMAIL_VERIFICATION=true` and confirm the restart
 finished.
 

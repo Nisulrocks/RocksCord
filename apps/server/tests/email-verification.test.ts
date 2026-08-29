@@ -301,6 +301,7 @@ describe('with an email provider configured', () => {
   it('advertises the requirement so the client can word its screens correctly', async () => {
     const response = await test.app.inject({ method: 'GET', url: '/api/auth/config' });
     expect(response.json().requireEmailVerification).toBe(true);
+    expect(response.json().emailConfigured).toBe(true);
   });
 });
 
@@ -343,8 +344,14 @@ describe('with verification switched off', () => {
     expect(row!.emailVerifiedAt).not.toBeNull();
   });
 
-  it('advertises the requirement as off', async () => {
+  it('advertises the requirement as off, and says no provider can deliver', async () => {
     const response = await test.app.inject({ method: 'GET', url: '/api/auth/config' });
     expect(response.json().requireEmailVerification).toBe(false);
+    /*
+     * The pair is what makes a misconfiguration diagnosable from outside: "no provider"
+     * and "provider present but switched off" are indistinguishable from
+     * `requireEmailVerification` alone, and they have opposite fixes.
+     */
+    expect(response.json().emailConfigured).toBe(false);
   });
 });
