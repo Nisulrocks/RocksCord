@@ -13,7 +13,15 @@
 
 import { useSettingsStore } from '../store/useSettingsStore';
 
-export type SoundName = 'mention' | 'message' | 'join' | 'leave';
+export type SoundName =
+  | 'mention'
+  | 'message'
+  | 'join'
+  | 'leave'
+  | 'mute'
+  | 'unmute'
+  | 'deafen'
+  | 'undeafen';
 
 /**
  * One context, created on first use.
@@ -65,6 +73,46 @@ const SOUNDS: Record<SoundName, { tones: Tone[]; gain: number }> = {
   leave: { gain: 0.1, tones: [
     { frequency: 780, at: 0, duration: 0.07 },
     { frequency: 520, at: 0.06, duration: 0.1 },
+  ] },
+
+  /*
+   * Mute and deafen confirm something you just did, so they answer a different question
+   * from the sounds above: not "look at this" but "yes, that worked". They are shorter and
+   * drier than join and leave for that reason -- and pitched below them, so a room full of
+   * people arriving never sounds like your own microphone cutting out.
+   *
+   * Off falls, on rises. The pair is the same two notes reversed, which is what makes them
+   * legible without ever being explained.
+   */
+  mute: { gain: 0.11, tones: [
+    { frequency: 520, at: 0, duration: 0.05 },
+    { frequency: 390, at: 0.045, duration: 0.08 },
+  ] },
+  unmute: { gain: 0.11, tones: [
+    { frequency: 390, at: 0, duration: 0.05 },
+    { frequency: 520, at: 0.045, duration: 0.08 },
+  ] },
+
+  /*
+   * Deafen is the same gesture lower down, and a little longer. It is the heavier action
+   * -- it silences everyone, not just you -- and going lower rather than louder says so
+   * without the sound itself becoming the loudest thing in the app.
+   *
+   * All four open on a different note, which is the part that has to be got right rather
+   * than assumed: direction alone is not enough to tell them apart, because you hear the
+   * first note before there is any direction to hear. An earlier pass had unmute starting
+   * at 390 and deafen at 400, near enough to be the same sound until it was too late.
+   *
+   * Kept above ~200Hz deliberately. Laptop speakers roll off below that, and a
+   * confirmation tone that is inaudible on the most common hardware is not one.
+   */
+  deafen: { gain: 0.12, tones: [
+    { frequency: 330, at: 0, duration: 0.06 },
+    { frequency: 220, at: 0.055, duration: 0.11 },
+  ] },
+  undeafen: { gain: 0.12, tones: [
+    { frequency: 220, at: 0, duration: 0.06 },
+    { frequency: 330, at: 0.055, duration: 0.11 },
   ] },
 };
 

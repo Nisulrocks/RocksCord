@@ -27,6 +27,7 @@ import {
   stopVoice,
 } from '../lib/voice';
 import { emitVoiceJoin, emitVoiceLeave, emitVoiceState } from '../lib/socket';
+import { playSound } from '../lib/sounds';
 
 export function useVoiceSession() {
   const user = useAppStore((s) => s.user);
@@ -132,6 +133,12 @@ export function useVoiceSession() {
     setMicrophoneEnabled(!next);
     setOutputMuted(nextDeaf);
     emitVoiceState({ selfMute: next, selfDeaf: nextDeaf });
+
+    /*
+     * Always the sound for the button that was pressed, even when un-muting also
+     * un-deafens: the confirmation should match the action taken, not the side effect.
+     */
+    playSound(next ? 'mute' : 'unmute');
   }, []);
 
   const toggleDeafen = useCallback(() => {
@@ -146,6 +153,13 @@ export function useVoiceSession() {
     setOutputMuted(next);
     setMicrophoneEnabled(!nextMute);
     emitVoiceState({ selfDeaf: next, selfMute: nextMute });
+
+    /*
+     * Audible even while deafening, which is the point: `setOutputMuted` mutes the peer
+     * audio elements, not the AudioContext, so the one action that silences everyone else
+     * is not also the one action with no confirmation.
+     */
+    playSound(next ? 'deafen' : 'undeafen');
   }, []);
 
   const toggleScreenShare = useCallback(async () => {
