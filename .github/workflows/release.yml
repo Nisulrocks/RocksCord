@@ -136,18 +136,14 @@ jobs:
           set -o pipefail
           npm run build:apk 2>&1 | tee /tmp/apk-build.log
 
-      # Job logs need admin rights to download, but the step summary is served by the
-      # public check-runs API -- so on a failure the reason is readable without them.
+      # Job logs need admin rights to download and step summaries are not served by the
+      # REST API either -- but annotations are, so the reason is emitted as one. Newlines
+      # must be percent-encoded or the annotation is cut off at the first.
       - name: Surface the failure
         if: failure()
         run: |
-          {
-            echo '### Android build failed'
-            echo
-            echo '```'
-            tail -c 8000 /tmp/apk-build.log || echo 'no log captured'
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          LOG=$(tail -c 4000 /tmp/apk-build.log | sed 's/%/%25/g' | tr '\n' '~')
+          echo "::error title=Android build::${LOG//\~/%0A}"
 
       - name: Name it after the version
         id: apk
