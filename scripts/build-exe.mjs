@@ -57,6 +57,9 @@ The --server value must start with http:// or https:// — got "${url}"
  * without a version bump it uploads over an existing release that no installed copy will
  * ever see -- the updater compares versions, so a re-published 1.0.0 is invisible.
  */
+/** Drives the installer's filename, and what the updater compares against. */
+const version = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+
 const releasing = argv.includes('--release');
 const publishArgs = releasing ? ['--publish', 'always'] : [];
 const buildArgs = passthrough.filter((arg) => arg !== '--release');
@@ -75,7 +78,6 @@ Create one at https://github.com/settings/tokens
     process.exit(1);
   }
 
-  const version = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version;
   console.log(`\n=== Releasing version ${version} ===`);
   console.log('Installed copies only see this if the version is higher than theirs.\n');
 }
@@ -145,7 +147,13 @@ const artifacts = [
     label: 'Portable — double-click to run, no installation',
   },
   {
-    file: path.join(releaseDir, 'RocksCord-Setup-1.0.0.exe'),
+    /*
+     * Built from the manifest, not written out. Hard-coding it meant that once the
+     * version moved on this pointed at whichever stale installer was still lying in
+     * the release directory -- naming the wrong file to hand to people, which is the
+     * one thing this summary exists to get right.
+     */
+    file: path.join(releaseDir, `RocksCord-Setup-${version}.exe`),
     label: 'Installer — adds Start menu and desktop shortcuts',
   },
   {
