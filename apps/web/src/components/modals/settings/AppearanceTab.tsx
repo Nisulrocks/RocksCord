@@ -78,7 +78,7 @@ export function AppearanceTab() {
         checked={notificationSounds}
         onChange={setNotificationSounds}
         label="Notification sounds"
-        description="A short tone for mentions and direct messages, when someone joins or leaves your voice channel, and when you mute or deafen yourself."
+        description="A short tone for mentions and direct messages, when you join or leave a call, when someone else joins or leaves your voice channel, and when you mute or deafen yourself."
       />
     </div>
   );

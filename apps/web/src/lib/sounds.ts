@@ -18,6 +18,8 @@ export type SoundName =
   | 'message'
   | 'join'
   | 'leave'
+  | 'connect'
+  | 'disconnect'
   | 'mute'
   | 'unmute'
   | 'deafen'
@@ -73,6 +75,25 @@ const SOUNDS: Record<SoundName, { tones: Tone[]; gain: number }> = {
   leave: { gain: 0.1, tones: [
     { frequency: 780, at: 0, duration: 0.07 },
     { frequency: 520, at: 0.06, duration: 0.1 },
+  ] },
+
+  /*
+   * You joining or leaving a call, as opposed to someone else arriving in one.
+   *
+   * Three notes rather than two, and spanning an octave rather than a fourth: connecting
+   * is a bigger event than a person walking in, and it should not be mistakable for one
+   * while you are already sitting in a busy channel. Both open on a pitch no other sound
+   * here uses, so the first note alone is enough to tell them apart.
+   */
+  connect: { gain: 0.13, tones: [
+    { frequency: 440, at: 0, duration: 0.06 },
+    { frequency: 587, at: 0.055, duration: 0.06 },
+    { frequency: 880, at: 0.11, duration: 0.13 },
+  ] },
+  disconnect: { gain: 0.13, tones: [
+    { frequency: 880, at: 0, duration: 0.06 },
+    { frequency: 587, at: 0.055, duration: 0.06 },
+    { frequency: 440, at: 0.11, duration: 0.14 },
   ] },
 
   /*

@@ -43,11 +43,25 @@ export function useVoiceSession() {
 
   const store = useVoiceStore;
 
-  const leave = useCallback(() => {
+  /**
+   * Actually disconnect.
+   *
+   * Separate from `leave` so switching channels can suppress the departure sound: moving
+   * from one call straight into another would otherwise play the disconnect and the
+   * connect back to back, which sounds like a fault rather than a move.
+   *
+   * `leave` takes no arguments on purpose. It is passed straight to `onClick`, and a
+   * boolean parameter there would receive the click event -- always truthy, silencing the
+   * one case that most needs the sound.
+   */
+  const teardown = useCallback((options?: { silent?: boolean }) => {
     if (!useVoiceStore.getState().channelId) return;
     emitVoiceLeave();
     stopVoice();
+    if (!options?.silent) playSound('disconnect');
   }, []);
+
+  const leave = useCallback(() => teardown(), [teardown]);
 
   const join = useCallback(
     async (targetChannelId: string) => {
@@ -61,7 +75,7 @@ export function useVoiceSession() {
       if (state.connecting) return;
       if (!user) return;
 
-      if (state.channelId) leave();
+      if (state.channelId) teardown({ silent: true });
 
       store.getState().setConnecting(true);
       store.getState().setError(null);
@@ -79,6 +93,9 @@ export function useVoiceSession() {
 
         store.getState().setChannel(targetChannelId);
         emitVoiceJoin(targetChannelId);
+        // Only once the call is actually up. Playing it on the click would announce a
+        // connection that may still fail on a refused microphone.
+        playSound('connect');
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Could not connect to voice.';
@@ -89,7 +106,7 @@ export function useVoiceSession() {
         store.getState().setConnecting(false);
       }
     },
-    [user, leave, toast, store],
+    [user, leave, teardown, toast, store],
   );
 
   /**
