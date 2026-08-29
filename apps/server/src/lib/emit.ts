@@ -27,6 +27,27 @@ export function emitToChannel<E extends EventName>(
   ctx.gateway?.to(Rooms.channel(channelId)).emit(event, ...args);
 }
 
+/**
+ * Emit to a channel, skipping one user's own sockets.
+ *
+ * For events where the actor needs a different payload from everyone else -- a new message
+ * carries the sender's nonce back to them and nobody else -- sending both to the channel
+ * would deliver two copies to the actor. `except` is a room-level exclusion, so it covers
+ * every device that user has open, not just the socket that made the request.
+ */
+export function emitToChannelExcept<E extends EventName>(
+  ctx: AppContext,
+  channelId: string,
+  exceptUserId: string,
+  event: E,
+  ...args: EventArgs<E>
+): void {
+  ctx.gateway
+    ?.to(Rooms.channel(channelId))
+    .except(Rooms.user(exceptUserId))
+    .emit(event, ...args);
+}
+
 /** Emit to every member of a server who is currently connected. */
 export function emitToServer<E extends EventName>(
   ctx: AppContext,

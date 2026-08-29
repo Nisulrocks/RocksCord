@@ -59,6 +59,7 @@ export const MessageItem = memo(function MessageItem({
 
   const openProfileCard = useUiStore((s) => s.openProfileCard);
   const openContextMenu = useUiStore((s) => s.openContextMenu);
+  const applyReaction = useAppStore((s) => s.applyReaction);
   const highlighted = useAppStore((s) => s.highlightedMessageId === message.id);
   const openModal = useUiStore((s) => s.openModal);
   const setReplyTarget = useUiStore((s) => s.setReplyTarget);
@@ -83,16 +84,35 @@ export const MessageItem = memo(function MessageItem({
 
   /* -------------------------------------------------------------------- */
 
+  /**
+   * Toggle a reaction, showing the result before the server has confirmed it.
+   *
+   * This used to wait for the round trip and let the socket event apply the change, which
+   * meant a tap took as long as the slowest hop to answer -- seconds, on a free-tier
+   * instance that may have been asleep. A reaction is a one-bit change the client can
+   * predict exactly, so it is applied locally first and undone if the request fails.
+   *
+   * The echo that arrives afterwards is a no-op: `applyReaction` keys on the emoji and the
+   * user, so applying the same change twice lands on the same state.
+   */
   const toggleReaction = async (emoji: string) => {
-    const existing = message.reactions.find((r) => r.emoji === emoji);
+    if (!currentUser) return;
+
+    const added = !message.reactions.find((r) => r.emoji === emoji)?.me;
     const encoded = encodeURIComponent(emoji);
+
+    applyReaction(channelId, message.id, emoji, currentUser.id, added);
+
     try {
-      if (existing?.me) {
-        await api.delete(`/api/channels/${channelId}/messages/${message.id}/reactions/${encoded}`);
-      } else {
+      if (added) {
         await api.put(`/api/channels/${channelId}/messages/${message.id}/reactions/${encoded}`);
+      } else {
+        await api.delete(`/api/channels/${channelId}/messages/${message.id}/reactions/${encoded}`);
       }
     } catch {
+      // Put it back. Leaving the optimistic state would show a reaction that no other
+      // client can see, which is worse than the tap appearing not to have registered.
+      applyReaction(channelId, message.id, emoji, currentUser.id, !added);
       toast('Could not update that reaction', 'error');
     }
   };

@@ -6,7 +6,19 @@
  * navigating back to the channel you joined from.
  */
 
-import { LogOut, Mic, MicOff, Headphones, HeadphoneOff, Settings, ScreenShare, PhoneOff, Signal } from 'lucide-react';
+import {
+  LogOut,
+  Mic,
+  MicOff,
+  Headphones,
+  HeadphoneOff,
+  Settings,
+  ScreenShare,
+  PhoneOff,
+  Signal,
+  Video,
+  VideoOff,
+} from 'lucide-react';
 import clsx from 'clsx';
 import type { UserStatus } from '@rockscord/shared';
 import { useAppStore } from '../../store/useAppStore';
@@ -100,6 +112,19 @@ export function UserPanel({ onLogout }: { onLogout: () => Promise<void> }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-0.5">
+              {/*
+                * The camera lives here as well as in the voice room, because this strip is
+                * the only voice control visible once you navigate to a text channel -- and
+                * turning your camera on is not something you should have to go back to the
+                * call to do.
+                */}
+              <IconButton
+                label={voice.camera ? 'Turn off camera' : 'Turn on camera'}
+                active={voice.camera}
+                onClick={() => void voice.toggleCamera()}
+              >
+                {voice.camera ? <Video size={16} /> : <VideoOff size={16} />}
+              </IconButton>
               <IconButton
                 label={voice.streaming ? 'Stop sharing' : 'Share your screen'}
                 active={voice.streaming}

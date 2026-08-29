@@ -163,6 +163,58 @@ describe('message delivery', () => {
     expect(message.authorId).toBe(alice.id);
   });
 
+  it('echoes the nonce to the sender only, so their placeholder can be replaced', async () => {
+    /*
+     * The sender shows the message optimistically before the server has it. Without a
+     * token tying that placeholder to the real message, the socket copy arrives looking
+     * like a different message and both sit in the list until the HTTP response lands --
+     * a visible duplicate for the length of the round trip.
+     *
+     * It goes to the author alone: it is theirs to correlate, and means nothing to anyone
+     * else in the channel.
+     */
+    const a = await connect(alice.accessToken, 'alice-nonce');
+    const b = await connect(bob.accessToken, 'bob-nonce');
+
+    a.socket.emit('channel:subscribe', { channelId: ids.generalChannelId });
+    b.socket.emit('channel:subscribe', { channelId: ids.generalChannelId });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const mine = waitFor<Message & { nonce?: string }>(a.socket, 'message:create');
+    const theirs = waitFor<Message & { nonce?: string }>(b.socket, 'message:create');
+
+    await test.app.inject({
+      method: 'POST',
+      url: `/api/channels/${ids.generalChannelId}/messages`,
+      headers: alice.auth,
+      payload: { content: 'nonce please', nonce: 'abc-123' },
+    });
+
+    expect((await mine).nonce).toBe('abc-123');
+    expect((await theirs).nonce).toBeUndefined();
+  });
+
+  it('still delivers exactly one copy to the sender', async () => {
+    // The author is excluded from the channel broadcast and served their own copy
+    // instead. Getting that wrong sends them two, which is the bug this replaced.
+    const a = await connect(alice.accessToken, 'alice-once');
+    a.socket.emit('channel:subscribe', { channelId: ids.generalChannelId });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const seen: string[] = [];
+    a.socket.on('message:create', (message: Message) => seen.push(message.id));
+
+    await test.app.inject({
+      method: 'POST',
+      url: `/api/channels/${ids.generalChannelId}/messages`,
+      headers: alice.auth,
+      payload: { content: 'only once', nonce: 'once-1' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(seen).toHaveLength(1);
+  });
+
   it('propagates edits and deletes', async () => {
     const b = await connect(bob.accessToken, 'bob-edits');
     b.socket.emit('channel:subscribe', { channelId: ids.generalChannelId });

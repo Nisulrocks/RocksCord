@@ -14,7 +14,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { Permission, Rooms, createInviteSchema } from '@rockscord/shared';
-import { channels, invites, members, servers } from '../db/schema.js';
+import { channels, invites, members, roles, servers } from '../db/schema.js';
 import { ApiError, fromZodError } from '../lib/errors.js';
 import { newInviteCode } from '../lib/ids.js';
 import {
@@ -23,7 +23,14 @@ import {
   getMemberContext,
   requireMember,
 } from '../lib/permissions.js';
-import { loadMemberRoleIds, toInvite, toMember, toServer } from '../lib/serializers.js';
+import {
+  loadMemberRoleIds,
+  toChannel,
+  toInvite,
+  toMember,
+  toRole,
+  toServer,
+} from '../lib/serializers.js';
 import { emitToServer, emitToUser, moveUserSockets, writeAuditLog } from '../lib/emit.js';
 import { publicUserColumns } from '../lib/serializers.js';
 import { users } from '../db/schema.js';
@@ -195,11 +202,18 @@ export default async function inviteRoutes(app: FastifyInstance): Promise<void> 
 
       emitToUser(ctx, userId, 'server:create', toServer(server, count));
 
-      // The client needs the channel list immediately to render the sidebar.
-      const channelRows = await db
-        .select()
-        .from(channels)
-        .where(eq(channels.serverId, invite.serverId));
+      /*
+       * Return the whole server, the same shape `POST /api/servers` returns.
+       *
+       * The client navigates straight in, and a server is not usable without its channels,
+       * its roles, and this membership: permissions resolve through the roles, so without
+       * them every check denies and the sidebar renders empty until a reload refetches
+       * everything. This route already read the channels and sent only their count.
+       */
+      const [channelRows, roleRows] = await Promise.all([
+        db.select().from(channels).where(eq(channels.serverId, invite.serverId)),
+        db.select().from(roles).where(eq(roles.serverId, invite.serverId)),
+      ]);
 
       await writeAuditLog(db, {
         serverId: invite.serverId,
@@ -214,8 +228,11 @@ export default async function inviteRoutes(app: FastifyInstance): Promise<void> 
 
       return {
         server: toServer(server, count),
+        channels: channelRows.map((row) => toChannel(row)),
+        roles: roleRows.map(toRole),
+        // A new member holds no explicit roles; @everyone applies to them by default.
+        membership: { serverId: invite.serverId, roleIds: [] as string[], nickname: null },
         alreadyMember: false,
-        channelCount: channelRows.length,
       };
     },
   );

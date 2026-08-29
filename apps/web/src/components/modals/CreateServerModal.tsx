@@ -10,7 +10,7 @@ import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ImagePlus } from 'lucide-react';
 import { LIMITS, createServerSchema } from '@rockscord/shared';
-import type { Server } from '@rockscord/shared';
+import type { Server, ServerBundle } from '@rockscord/shared';
 import { api, ApiClientError } from '../../lib/api';
 import { useAppStore } from '../../store/useAppStore';
 import { useUiStore } from '../../store/useUiStore';
@@ -20,6 +20,7 @@ import { Button, Field, Input, Textarea } from '../ui/primitives';
 export function CreateServerModal({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const upsertServer = useAppStore((s) => s.upsertServer);
+  const applyServerBundle = useAppStore((s) => s.applyServerBundle);
   const toast = useUiStore((s) => s.toast);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -52,11 +53,14 @@ export function CreateServerModal({ onClose }: { onClose: () => void }) {
     setError(null);
 
     try {
-      const response = await api.post<{ server: Server }>('/api/servers', {
+      const response = await api.post<ServerBundle>('/api/servers', {
         name: parsed.data.name,
         description: parsed.data.description,
       });
-      upsertServer(response.server);
+      // Channels, roles, and membership together -- see `applyServerBundle`. Storing only
+      // the server left the client navigating into one it could not resolve permissions
+      // for, which read as the new server failing to render until a reload.
+      applyServerBundle(response);
 
       if (iconFile) {
         try {

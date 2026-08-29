@@ -38,6 +38,25 @@ export interface Server {
   memberCount?: number;
 }
 
+/**
+ * Everything needed to use a server, returned when one is created or joined.
+ *
+ * A `Server` on its own is not enough to navigate into: permissions resolve through the
+ * membership's roles, so a client holding the server row but neither of those denies every
+ * check and renders an empty shell. Shipping them together is what makes "created" and
+ * "usable" the same moment, rather than one that needs a reload to become the other.
+ */
+export interface ServerBundle {
+  server: Server;
+  channels: Channel[];
+  roles: Role[];
+  membership: {
+    serverId: string;
+    roleIds: string[];
+    nickname: string | null;
+  };
+}
+
 export interface Role {
   id: string;
   serverId: string;
@@ -103,6 +122,13 @@ export interface Reaction {
 
 export interface Message {
   id: string;
+  /**
+   * The sender's correlation token, present only on their own optimistic copy and on the
+   * echo the server sends back to them. Never stored, and never seen by anyone else: it
+   * exists so a client can recognise its own placeholder and replace it rather than end
+   * up displaying the message twice.
+   */
+  nonce?: string;
   channelId: string;
   authorId: string;
   author: PublicUser;

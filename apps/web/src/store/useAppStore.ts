@@ -29,6 +29,7 @@ import type {
   Server,
   UserStatus,
   VoiceParticipant,
+  ServerBundle,
 } from '@rockscord/shared';
 import type { NotificationPayload } from '@rockscord/shared';
 
@@ -102,6 +103,7 @@ interface AppState {
   upsertServer: (server: Server) => void;
   removeServer: (serverId: string) => void;
   upsertChannel: (channel: Channel) => void;
+  applyServerBundle: (bundle: ServerBundle) => void;
   removeChannel: (serverId: string, channelId: string) => void;
   upsertRole: (role: Role) => void;
   removeRole: (serverId: string, roleId: string) => void;
@@ -325,6 +327,38 @@ export const useAppStore = create<AppState>((set, get) => ({
   upsertChannel: (channel) =>
     set((state) => ({ channels: { ...state.channels, [channel.id]: channel } })),
 
+  /**
+   * Take on a whole server at once: the server, its channels, its roles, and the
+   * membership that ties them together.
+   *
+   * Adding only the server is not enough to navigate into one. The permission resolver
+   * reads roles through the membership, so a server present without either denies every
+   * check -- the sidebar renders empty and inert, which looks like a rendering fault
+   * rather than a missing payload. Creating and joining both go through here so the two
+   * cannot drift.
+   */
+  applyServerBundle: (bundle) =>
+    set((state) => {
+      const channels = { ...state.channels };
+      for (const channel of bundle.channels) channels[channel.id] = channel;
+
+      const roles = { ...state.roles };
+      for (const role of bundle.roles) roles[role.id] = role;
+
+      return {
+        servers: { ...state.servers, [bundle.server.id]: bundle.server },
+        channels,
+        roles,
+        memberships: {
+          ...state.memberships,
+          [bundle.membership.serverId]: {
+            roleIds: bundle.membership.roleIds,
+            nickname: bundle.membership.nickname,
+          },
+        },
+      };
+    }),
+
   removeChannel: (_serverId, channelId) =>
     set((state) => {
       const channels = { ...state.channels };
@@ -416,6 +450,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       // The same message can arrive twice: once through the channel room and once
       // through the recipient's personal room. Ids make de-duplication exact.
       if (existing.some((m) => m.id === message.id)) return {};
+
+      /*
+       * Swap the sender's own placeholder for the real thing, in place.
+       *
+       * The optimistic copy is removed when the POST resolves, but the socket carries the
+       * real message independently and usually arrives first -- so between the two the
+       * list held both, and the sender watched a duplicate of what they had just sent
+       * flicker in below it. Replacing on the nonce collapses that into one step, and
+       * keeps the message at the position it already occupied rather than moving it.
+       */
+      if (message.nonce) {
+        const placeholder = existing.findIndex((m) => m.nonce === message.nonce);
+        if (placeholder !== -1) {
+          const next = [...existing];
+          next[placeholder] = message;
+          return {
+            messagesByChannel: { ...state.messagesByChannel, [message.channelId]: next },
+          };
+        }
+      }
 
       // Ids sort chronologically, so a late-arriving message is placed rather than
       // appended blindly -- which keeps ordering correct under reconnection.

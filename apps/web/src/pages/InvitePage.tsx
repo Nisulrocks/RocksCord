@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Users } from 'lucide-react';
-import type { Invite, Server } from '@rockscord/shared';
+import type { Invite, Server, ServerBundle } from '@rockscord/shared';
 import { api, ApiClientError } from '../lib/api';
 import { useAppStore } from '../store/useAppStore';
 import { ServerAvatar } from '../components/ui/Avatar';
@@ -22,7 +22,7 @@ const PENDING_INVITE_KEY = 'rockscord:pending-invite';
 export function InvitePage({ signedIn }: { signedIn: boolean }) {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
-  const upsertServer = useAppStore((s) => s.upsertServer);
+  const applyServerBundle = useAppStore((s) => s.applyServerBundle);
 
   const [invite, setInvite] = useState<Invite | null>(null);
   const [alreadyMember, setAlreadyMember] = useState(false);
@@ -54,6 +54,18 @@ export function InvitePage({ signedIn }: { signedIn: boolean }) {
     };
   }, [code]);
 
+  /**
+   * Already in this server: open it, do not ask.
+   *
+   * An invite is a way in, and someone who is already inside has nothing to accept. The
+   * page used to show them the full landing card with a button, which reads as being asked
+   * to join a server they are looking at in their own sidebar.
+   */
+  useEffect(() => {
+    if (!signedIn || !alreadyMember || !invite) return;
+    navigate(`/channels/${invite.serverId}`, { replace: true });
+  }, [signedIn, alreadyMember, invite, navigate]);
+
   /** Signed in and arriving with a stored code: accept it automatically. */
   useEffect(() => {
     if (!signedIn) return;
@@ -77,8 +89,12 @@ export function InvitePage({ signedIn }: { signedIn: boolean }) {
 
     setJoining(true);
     try {
-      const response = await api.post<{ server: Server }>(`/api/invites/${code}`);
-      upsertServer(response.server);
+      const response = await api.post<ServerBundle & { alreadyMember: boolean }>(
+        `/api/invites/${code}`,
+      );
+      // Channels, roles, and membership together: without them the client cannot resolve
+      // permissions for the server it is about to open, and renders it empty.
+      applyServerBundle(response);
       navigate(`/channels/${response.server.id}`, { replace: true });
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : 'Could not join that server');

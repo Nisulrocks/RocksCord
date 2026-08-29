@@ -79,7 +79,15 @@ export interface ServerToClientEvents {
   /** Fired once after a successful handshake. Contains the whole initial state. */
   ready: (payload: ReadyPayload) => void;
 
-  'message:create': (message: Message) => void;
+  /**
+   * The `nonce` is the sender's own correlation token, echoed back only to them.
+   *
+   * Without it a client cannot tell its optimistic placeholder from the real message
+   * arriving over the socket, so both sit in the list until the HTTP response lands and
+   * the placeholder is removed -- a visible duplicate for exactly as long as the round
+   * trip takes.
+   */
+  'message:create': (message: Message & { nonce?: string }) => void;
   'message:update': (payload: MessageUpdatePayload) => void;
   'message:delete': (payload: MessageDeletePayload) => void;
   'message:reaction:add': (payload: ReactionPayload) => void;

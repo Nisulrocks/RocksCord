@@ -47,7 +47,10 @@ import {
 } from '../lib/permissions.js';
 import { sanitizeMessageContent } from '../lib/sanitize.js';
 import { hydrateMessage, hydrateMessages } from '../lib/serializers.js';
-import { emitToChannel, emitToUsers } from '../lib/emit.js';
+import { emitToChannel, emitToUsers,
+  emitToChannelExcept,
+  emitToUser,
+} from '../lib/emit.js';
 import {
   acknowledgeChannel,
   bumpMentionCounts,
@@ -284,7 +287,16 @@ export default async function messageRoutes(app: FastifyInstance): Promise<void>
       const [row] = await db.select().from(messages).where(eq(messages.id, messageId)).limit(1);
       const message = await hydrateMessage(db, row!, userId);
 
-      emitToChannel(ctx, channelId, 'message:create', message);
+      /*
+       * The author's copy carries their nonce so their client can swap its optimistic
+       * placeholder for the real message in one step. Everyone else gets the message
+       * plain: the token means nothing to them, and it is the sender's to correlate.
+       */
+      emitToChannelExcept(ctx, channelId, userId, 'message:create', message);
+      emitToUser(ctx, userId, 'message:create', {
+        ...message,
+        ...(parsed.data.nonce ? { nonce: parsed.data.nonce } : {}),
+      });
 
       /*
        * Socket rooms only contain people with the channel *open*. Anyone else still needs

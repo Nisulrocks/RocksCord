@@ -54,6 +54,7 @@ import {
   loadMemberRoleIds,
   loadUsers,
   publicUserColumns,
+  toChannel,
   toMember,
   toRole,
   toServer,
@@ -199,6 +200,33 @@ export default async function serverRoutes(app: FastifyInstance): Promise<void> 
 
       const server = toServer(created!, 1);
 
+      /*
+       * Return the whole server, not just its row.
+       *
+       * The client navigates straight into what it just created, and a server is not
+       * usable without its channels, its roles, and the caller's own membership: the
+       * permission resolver reads roles through the membership, so with none of them
+       * present every check denies and the sidebar renders as an empty, inert shell.
+       * It looked like a rendering bug and was really a missing payload -- a reload
+       * "fixed" it only because that refetches everything through `ready`.
+       */
+      const [createdChannels, createdRoles] = await Promise.all([
+        db.select().from(channels).where(eq(channels.serverId, serverId)),
+        db.select().from(roles).where(eq(roles.serverId, serverId)),
+      ]);
+
+      const bundle = {
+        server,
+        channels: createdChannels.map((row) => toChannel(row)),
+        roles: createdRoles.map(toRole),
+        membership: {
+          serverId,
+          // The creator holds no explicit roles; ownership is what grants them everything.
+          roleIds: [] as string[],
+          nickname: null,
+        },
+      };
+
       // The creator's other open tabs need to learn about the new server too.
       await moveUserSockets(ctx, userId, Rooms.server(serverId), 'join');
       emitToUser(ctx, userId, 'server:create', server);
@@ -213,7 +241,7 @@ export default async function serverRoutes(app: FastifyInstance): Promise<void> 
       });
 
       request.log.info({ serverId, userId, name }, 'server created');
-      return reply.status(201).send({ server });
+      return reply.status(201).send(bundle);
     },
   );
 

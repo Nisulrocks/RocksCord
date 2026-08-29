@@ -71,7 +71,6 @@ export function Composer({
   const membersByServer = useAppStore((s) => s.membersByServer);
   const dmChannels = useAppStore((s) => s.dmChannels);
   const addMessage = useAppStore((s) => s.addMessage);
-  const removeMessage = useAppStore((s) => s.removeMessage);
 
   const permissions = usePermissions(serverId, channelId);
   const canSend = permissions.can(Permission.SEND_MESSAGES);
@@ -274,6 +273,8 @@ export function Composer({
     const optimisticId = `pending-${nonce}`;
     const optimistic: Message = {
       id: optimisticId,
+      // Matched against the server's echo so the real message replaces this one in place.
+      nonce,
       channelId,
       authorId: me.id,
       author: me,
@@ -297,22 +298,36 @@ export function Composer({
     setReplyTarget(channelId, null);
 
     try {
-      await api.post(`/api/channels/${channelId}/messages`, {
-        content,
-        replyToId: replyTarget?.id ?? null,
-        attachmentIds: ready.map((upload) => upload.attachment!.id),
-        nonce,
-      });
-      // The real message arrives via the socket; drop the placeholder.
-      removeMessage(channelId, optimisticId);
-      useAppStore.setState((state) => ({
-        messagesByChannel: {
-          ...state.messagesByChannel,
-          [channelId]: (state.messagesByChannel[channelId] ?? []).filter(
-            (message) => message.id !== optimisticId,
-          ),
+      const response = await api.post<{ message: Message }>(
+        `/api/channels/${channelId}/messages`,
+        {
+          content,
+          replyToId: replyTarget?.id ?? null,
+          attachmentIds: ready.map((upload) => upload.attachment!.id),
+          nonce,
         },
-      }));
+      );
+
+      /*
+       * Normally the socket has already swapped the placeholder for the real message by
+       * now, matching on the nonce, and this finds nothing to do.
+       *
+       * It matters when the socket is down. Deleting the placeholder here -- which is what
+       * this used to do -- made a successfully sent message disappear from the sender's
+       * own view until they reloaded. Replacing it with the response instead means the
+       * send is durable either way, and the two paths converge on the same message.
+       */
+      useAppStore.setState((state) => {
+        const messages = state.messagesByChannel[channelId] ?? [];
+        const index = messages.findIndex((message) => message.id === optimisticId);
+        if (index === -1) return {};
+
+        const next = [...messages];
+        next[index] = response.message;
+        return {
+          messagesByChannel: { ...state.messagesByChannel, [channelId]: next },
+        };
+      });
     } catch (error) {
       // Restore what the user typed so nothing is lost.
       useAppStore.setState((state) => ({
@@ -339,7 +354,6 @@ export function Composer({
     channelId,
     replyTarget,
     addMessage,
-    removeMessage,
     clearDraft,
     setDraft,
     setReplyTarget,
