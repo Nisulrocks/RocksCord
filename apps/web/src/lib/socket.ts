@@ -300,7 +300,9 @@ async function showDesktopNotification(title: string, body: string): Promise<voi
   if (Notification.permission !== 'granted') return;
 
   try {
-    new Notification(title, { body, icon: '/favicon.svg', silent: false });
+    // `/favicon.svg` never existed; the SPA fallback answered with index.html, so the
+    // notification showed the browser's default icon instead of the app's.
+    new Notification(title, { body, icon: '/icon-192.png', silent: false });
   } catch {
     // Some browsers require a service worker for notifications; failing is acceptable.
   }
