@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      The app's own dark surface, matching `--surface-1` in the web client.
+      The app's own dark surface, matching the web client's surface-1 token.
 
       Used for the launch screen and the WebView's backdrop so the app never flashes
       white: the page it loads is dark, and a white frame between tapping the icon and

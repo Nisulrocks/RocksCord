@@ -48,7 +48,7 @@
       channel fails with a permission error that looks like a bug in the site.
 
       MODIFY_AUDIO_SETTINGS is what lets WebRTC route audio to the earpiece or speaker and
-      apply echo cancellation. Missing it does not fail loudly -- calls simply sound wrong.
+      apply echo cancellation. Missing it does not fail loudly; calls simply sound wrong.
     -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -57,7 +57,7 @@
     <!--
       Declared optional so the app stays installable on hardware without them. The default
       for a CAMERA permission is to *require* a camera, which would hide the app from
-      tablets that have none -- for something whose main use is text chat.
+      tablets that have none, for something whose main use is text chat.
     -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
