@@ -1,9 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  `fitsSystemWindows` is what keeps the app out from under the status bar.
+
+  Without it the WebView fills the whole window, and the web client, which knows nothing
+  about system bars, draws its header underneath the clock and the battery icon. The
+  attribute pads this container by whatever the system bars occupy, so the page starts
+  below them.
+
+  The background colour matters for the same reason: that padded strip is this view, not
+  the WebView, so it would otherwise be the theme's default rather than the app's own dark
+  surface.
+-->
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/rockscordBackground"
+    android:fitsSystemWindows="true"
     tools:context=".MainActivity">
 
     <WebView

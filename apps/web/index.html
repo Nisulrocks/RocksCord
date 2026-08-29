@@ -2,7 +2,13 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!--
+      No `viewport-fit=cover`. It asks the browser to extend the page under the notch and
+      the system bars, and then expects the page to pad itself back out of them with
+      `env(safe-area-inset-*)`. Nothing here does, so all it bought was a header drawn
+      underneath the clock on any phone with a cutout. The default insets the page instead.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <meta name="description" content="RocksCord - real-time chat, voice, and communities." />
     <title>RocksCord</title>

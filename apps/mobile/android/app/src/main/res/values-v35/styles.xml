@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      Android 15 draws every app targeting SDK 35 edge to edge, whether or not it asked to.
+      For an app that is a WebView showing a page with no idea system bars exist, that put
+      the client's own header underneath the clock and the battery icon.
+
+      Opting out restores the older behaviour, where the system bars get their own space
+      and `statusBarColor` is honoured. It is a stopgap by design: Google has said the flag
+      stops working in a future SDK level, and the durable fix is for the page to read
+      `env(safe-area-inset-*)` and pad itself. This buys the time to do that properly.
+
+      Only this one attribute differs from the default theme, hence the shared base: a
+      qualified resource replaces its default outright, so repeating the other items here
+      would mean two lists to keep in step.
+    -->
+    <style name="AppTheme" parent="RocksCordBase">
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+
+    <style name="AppTheme.NoActionBar" parent="RocksCordBase">
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+</resources>

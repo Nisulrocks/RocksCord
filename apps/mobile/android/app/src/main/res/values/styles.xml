@@ -2,24 +2,36 @@
 <resources>
 
     <!--
-      A dark base theme, because the app is dark.
+      The shared base, so the Android 15 variant in values-v35 can add one attribute
+      without repeating everything. A qualified resource replaces its default outright
+      rather than merging with it, which is the usual way these two drift apart.
 
-      Capacitor's default is `Theme.AppCompat.Light.DarkActionBar`, which paints a white
-      window behind the WebView. That white is visible twice: for a moment on every cold
-      start, and behind the page whenever the WebView is mid-navigation or over-scrolled.
+      Dark, because the app is dark. Capacitor's default is
+      `Theme.AppCompat.Light.DarkActionBar`, which paints a white window behind the
+      WebView; that white shows on every cold start and behind the page whenever the
+      WebView is mid-navigation or over-scrolled.
     -->
-    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+    <style name="RocksCordBase" parent="Theme.AppCompat.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
         <item name="android:windowBackground">@color/rockscordBackground</item>
+
+        <!--
+          The system bars, painted to match the app so the inset strips do not read as
+          borders. `windowLightStatusBar` false keeps the clock and icons light, which is
+          what makes them legible against this background rather than black on near-black.
+        -->
+        <item name="android:statusBarColor">@color/rockscordBackground</item>
+        <item name="android:navigationBarColor">@color/rockscordBackground</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 
-    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.NoActionBar">
-        <item name="windowActionBar">false</item>
-        <item name="windowNoTitle">true</item>
-        <item name="android:windowBackground">@color/rockscordBackground</item>
-    </style>
+    <style name="AppTheme" parent="RocksCordBase" />
+
+    <style name="AppTheme.NoActionBar" parent="RocksCordBase" />
 
     <!--
       The launch screen.
