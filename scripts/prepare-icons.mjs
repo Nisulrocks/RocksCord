@@ -313,6 +313,23 @@ const OUTPUTS = [
    * foreground and background layer, which this pipeline has no business generating from a
    * flat PNG.
    */
+  /*
+   * The launch screen logo.
+   *
+   * A real bitmap, and it has to be: the splash is a `<layer-list>` with a `<bitmap>` in
+   * it, and `@mipmap/ic_launcher` cannot be used there. From API 26 that name resolves to
+   * the adaptive-icon XML, which is not a bitmap, so inflating the window background
+   * throws `Resources$NotFoundException` before the activity draws anything -- the app
+   * appears to open and close instantly.
+   */
+  {
+    file: path.join(
+      root, 'apps', 'mobile', 'android', 'app', 'src', 'main', 'res',
+      'drawable', 'splash_logo.png',
+    ),
+    size: 288,
+  },
+
   ...[
     ['mdpi', 48],
     ['hdpi', 72],

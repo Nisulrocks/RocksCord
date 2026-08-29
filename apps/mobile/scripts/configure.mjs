@@ -14,7 +14,7 @@
  * Run by `npm run build:apk`; safe to run repeatedly.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -51,5 +51,62 @@ const updated = original
   .replace(/versionName\s+"[^"]*"/, `versionName "${version}"`);
 
 if (updated !== original) writeFileSync(gradlePath, updated);
+
+/* -------------------------------------------------------------------------- */
+/* Resource checks                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Refuse to build a `<bitmap>` that points at a launcher icon.
+ *
+ * From API 26 `@mipmap/ic_launcher` resolves to the adaptive-icon XML, which is not a
+ * bitmap. `<bitmap android:src="@mipmap/ic_launcher">` therefore compiles cleanly and
+ * throws `Resources$NotFoundException` at runtime -- and when the drawable in question is
+ * a window background, that happens before the activity draws, so the app opens and
+ * closes instantly with nothing on screen and nothing in the build output.
+ *
+ * aapt cannot catch it, because the reference is only invalid once resolved on a device.
+ * This is the cheapest thing that can, and it is here rather than in a lint config so it
+ * runs on every build including a plain `npm run build:apk`.
+ */
+function checkBitmapReferences() {
+  const resDir = path.join(mobileRoot, 'android', 'app', 'src', 'main', 'res');
+  const offenders = [];
+
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      if (statSync(full).isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!entry.endsWith('.xml')) continue;
+
+      const body = readFileSync(full, 'utf8')
+        // Comments discuss this exact trap by name; matching them would be self-defeating.
+        .replace(/<!--[\s\S]*?-->/g, '');
+
+      for (const tag of body.match(/<bitmap\b[^>]*>/g) ?? []) {
+        if (/android:src\s*=\s*"@mipmap\//.test(tag)) {
+          offenders.push(path.relative(mobileRoot, full));
+        }
+      }
+    }
+  };
+
+  walk(resDir);
+
+  if (offenders.length > 0) {
+    console.error(
+      'A <bitmap> refers to @mipmap/... in:\n' +
+        offenders.map((f) => `  ${f}`).join('\n') +
+        '\n\nLauncher icons are adaptive-icon XML from API 26, not bitmaps, so this\n' +
+        'crashes on launch. Point it at a plain PNG drawable instead.',
+    );
+    process.exit(1);
+  }
+}
+
+checkBitmapReferences();
 
 console.log(`RocksCord ${version}  (versionCode ${versionCode})`);

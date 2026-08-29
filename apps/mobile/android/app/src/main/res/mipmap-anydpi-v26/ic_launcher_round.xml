@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher icon on API 26 and up, where the system masks it into whatever shape the
+  launcher uses (circle, squircle, teardrop).
+
+  The foreground is inset because masking crops it: only the central 72 of 108 dp is
+  guaranteed to survive, and `ic_launcher_foreground.png` is a full-bleed logo. Without the
+  inset the icon's edges are shaved off on any launcher that uses a round mask, which is
+  most of them.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <background android:drawable="@color/rockscordBackground"/>
+    <foreground>
+        <inset
+            android:drawable="@mipmap/ic_launcher_foreground"
+            android:inset="18%" />
+    </foreground>
 </adaptive-icon>

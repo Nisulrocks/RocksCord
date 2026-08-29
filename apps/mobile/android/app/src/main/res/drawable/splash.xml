@@ -1,15 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The launch screen: the app icon on the app's own background.
+  The launch screen: the app logo on the app's own background.
 
-  Replaces Capacitor's default white splash.png, which is what a cold start would
-  otherwise show for the second or two before the remote client paints.
+  Replaces Capacitor's default white splash, which is what a cold start would otherwise
+  show for the second or two before the remote client paints.
+
+  The logo is `@drawable/splash_logo`, a plain PNG, and must stay one. `@mipmap/ic_launcher`
+  looks like the obvious choice and crashes the app on every device running API 26 or
+  later: that name resolves to the adaptive-icon XML, `<bitmap>` requires an actual bitmap,
+  and the exception is thrown while inflating this window background, before the activity
+  has drawn. The app opens and closes with nothing shown.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/rockscordBackground" />
     <item>
         <bitmap
             android:gravity="center"
-            android:src="@mipmap/ic_launcher" />
+            android:src="@drawable/splash_logo" />
     </item>
 </layer-list>
