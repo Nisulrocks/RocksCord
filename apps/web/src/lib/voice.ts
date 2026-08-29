@@ -657,18 +657,66 @@ function broadcastMediaMap(): void {
  * Returns false if the user denied access or has no camera, so the caller can leave the
  * button un-toggled rather than showing an "on" state that is not.
  */
+/**
+ * Camera constraints, from the saved preference.
+ *
+ * Modest by design: this is a mesh, so each participant uploads one copy of their video
+ * per other participant. 720p between four people is a lot of upstream on home wifi.
+ *
+ * `deviceId` is `ideal` rather than `exact`, for the same reason the microphone is: a
+ * saved id goes stale when a webcam is unplugged, and `exact` would turn that into a
+ * failure to start the camera at all rather than a fallback to the built-in one.
+ */
+function cameraConstraints(): MediaTrackConstraints {
+  const { cameraDeviceId } = useSettingsStore.getState();
+  return {
+    ...(cameraDeviceId ? { deviceId: { ideal: cameraDeviceId } } : {}),
+    width: { ideal: 640 },
+    height: { ideal: 360 },
+    frameRate: { ideal: 24, max: 30 },
+  };
+}
+
+/**
+ * Switch camera without dropping the call.
+ *
+ * `replaceTrack` swaps the outgoing track on each sender in place, so no renegotiation is
+ * needed and nobody sees a gap -- the same approach the microphone switch uses.
+ */
+export async function setCameraDevice(deviceId: string): Promise<void> {
+  if (!cameraStream) return;
+
+  const replacement = await navigator.mediaDevices.getUserMedia({
+    video: { ...cameraConstraints(), ...(deviceId ? { deviceId: { ideal: deviceId } } : {}) },
+    audio: false,
+  });
+
+  const [track] = replacement.getVideoTracks();
+  if (!track) return;
+
+  track.addEventListener('ended', () => {
+    void stopCameraAndNotify();
+  });
+
+  for (const entry of peers.values()) {
+    const sender = entry.connection.getSenders().find((s) => s.track?.kind === 'video');
+    if (sender) await sender.replaceTrack(track);
+  }
+
+  for (const old of cameraStream.getVideoTracks()) {
+    cameraStream.removeTrack(old);
+    old.stop();
+  }
+  cameraStream.addTrack(track);
+  useVoiceStore.getState().bumpVideo();
+}
+
 export async function startCamera(): Promise<boolean> {
   if (!currentChannelId || cameraStream) return false;
 
   try {
     cameraStream = await navigator.mediaDevices.getUserMedia({
-      // Modest by design: this is a mesh, so each participant uploads one copy of this
-      // per other participant. 720p by four people is a lot of upstream on home wifi.
-      video: {
-        width: { ideal: 640 },
-        height: { ideal: 360 },
-        frameRate: { ideal: 24, max: 30 },
-      },
+      video: cameraConstraints(),
       audio: false,
     });
   } catch {

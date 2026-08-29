@@ -35,6 +35,7 @@ import {
   verifyPassword,
 } from '../lib/auth.js';
 import { ApiError, fromZodError } from '../lib/errors.js';
+import { filterVisibleChannels, requireMember } from '../lib/permissions.js';
 import { publicUserColumns, toPublicUser, toSelfUser } from '../lib/serializers.js';
 import { sanitizeDisplayName } from '../lib/sanitize.js';
 import { cleanText } from '../lib/sanitize.js';
@@ -225,6 +226,63 @@ export default async function userRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return { readStates: result };
+  });
+
+  /**
+   * Mark every channel in a server as read.
+   *
+   * Done here rather than by the client acknowledging each channel in turn, because the
+   * client does not know the newest message id for channels it has never opened -- which
+   * is precisely the set someone reaches for this to clear.
+   */
+  app.post('/@me/read-states/server/:serverId', async (request) => {
+    const { serverId } = request.params as { serverId: string };
+    const userId = request.user!.id;
+
+    // `requireMember` already 404s a non-member, so this is the same lookup narrowed:
+    // it returns the context rather than just proving membership.
+    const context = await requireMember(db, serverId, userId);
+    const serverChannels = await db
+      .select({ id: channels.id })
+      .from(channels)
+      .where(eq(channels.serverId, serverId));
+
+    // Only channels they can actually see: marking a hidden one read would itself be a
+    // way to learn it exists.
+    const visible = await filterVisibleChannels(
+      db,
+      context,
+      serverChannels.map((channel) => channel.id),
+    );
+    const channelIds = [...visible];
+    if (channelIds.length === 0) return { readStates: [] };
+
+    const latest = await db
+      .select({ channelId: messages.channelId, lastId: sql<string>`max(${messages.id})` })
+      .from(messages)
+      .where(and(inArray(messages.channelId, channelIds), eq(messages.deleted, false)))
+      .groupBy(messages.channelId);
+
+    const updated: { channelId: string; lastReadMessageId: string }[] = [];
+    for (const row of latest) {
+      if (!row.lastId) continue;
+      await db
+        .insert(readStates)
+        .values({
+          userId,
+          channelId: row.channelId,
+          lastReadMessageId: row.lastId,
+          mentionCount: 0,
+          updatedAt: Date.now(),
+        })
+        .onConflictDoUpdate({
+          target: [readStates.userId, readStates.channelId],
+          set: { lastReadMessageId: row.lastId, mentionCount: 0, updatedAt: Date.now() },
+        });
+      updated.push({ channelId: row.channelId, lastReadMessageId: row.lastId });
+    }
+
+    return { readStates: updated };
   });
 
   /** Every channel the user could receive messages in: server channels + open DMs. */

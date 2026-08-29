@@ -21,13 +21,18 @@ message and flashes it, loading a window around it if it is not in memory.
 picker as `:name:`.
 
 **Voice and video** — peer-to-peer WebRTC audio, camera, screen sharing, mute, deafen,
-speaking detection, per-peer volume, and device selection with a live mic meter.
+speaking detection, and per-peer volume. Microphone, speaker, and camera are all
+selectable, with a live input meter and a camera preview; changes apply mid-call without
+rejoining.
 
 **Servers** — invites, roles, a 22-permission bitfield with per-channel overwrites, kicks,
 bans, and an audit log.
 
 **Accounts** — Argon2id passwords, rotating refresh tokens, avatars, custom status,
 presence with automatic idle, friends, and optional email verification.
+
+**Quality of life** — `Ctrl`+`K` quick switcher, `Ctrl`+`/` shortcut sheet, mark a whole
+server read, notification sounds, and light/dark/system themes.
 
 **Apps** — a web client and a Windows desktop app that embeds the server, with a splash
 screen and automatic updates.
@@ -154,7 +159,7 @@ After that, `git push` deploys. Full walkthrough in
 ## Testing
 
 ```bash
-npm test          # 189 tests
+npm test          # 194 tests
 npm run smoke     # end-to-end against a running server
 ```
 

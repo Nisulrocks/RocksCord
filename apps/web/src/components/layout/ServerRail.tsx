@@ -9,6 +9,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Compass, Plus } from 'lucide-react';
 import clsx from 'clsx';
+import { api } from '../../lib/api';
 import { useAppStore } from '../../store/useAppStore';
 import { useUiStore } from '../../store/useUiStore';
 import { ServerAvatar } from '../ui/Avatar';
@@ -27,6 +28,24 @@ export function ServerRail() {
 
   const openModal = useUiStore((s) => s.openModal);
   const openContextMenu = useUiStore((s) => s.openContextMenu);
+  const markRead = useAppStore((s) => s.markRead);
+
+  /**
+   * Clear every unread badge in a server.
+   *
+   * Done server-side: the client does not know the newest message id for channels it has
+   * never opened, which is exactly the set someone reaches for this to clear.
+   */
+  const markServerRead = async (serverId: string) => {
+    try {
+      const result = await api.post<{ readStates: { channelId: string; lastReadMessageId: string }[] }>(
+        `/api/users/@me/read-states/server/${serverId}`,
+      );
+      for (const state of result.readStates) markRead(state.channelId, state.lastReadMessageId);
+    } catch {
+      // Nothing was cleared; the badges simply stay, which is the honest outcome.
+    }
+  };
   const setMobilePane = useUiStore((s) => s.setMobilePane);
 
   const isHome = location.pathname.startsWith('/friends') || location.pathname.startsWith('/dm');
@@ -90,8 +109,13 @@ export function ServerRail() {
                 y: event.clientY,
                 items: [
                   {
+                    label: 'Mark as read',
+                    onSelect: () => void markServerRead(server.id),
+                  },
+                  {
                     label: 'Invite people',
                     onSelect: () => openModal({ kind: 'invite', serverId: server.id }),
+                    separated: true,
                   },
                   {
                     label: 'Server settings',

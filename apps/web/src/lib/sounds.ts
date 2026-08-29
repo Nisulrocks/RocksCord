@@ -1,0 +1,101 @@
+/**
+ * Notification sounds.
+ *
+ * Synthesised with Web Audio rather than shipping audio files. Two short sine tones are a
+ * few lines of code and no bytes at all, where an mp3 would be an asset to host, a CSP
+ * `media-src` to widen, and a request on every first play. It also means the sound is
+ * described in the code rather than in a binary nobody can inspect.
+ *
+ * The tones are deliberately soft and short. A notification sound is heard hundreds of
+ * times a day by someone who did not choose to hear it, so the bar is "noticeable once"
+ * rather than "attention-grabbing every time".
+ */
+
+import { useSettingsStore } from '../store/useSettingsStore';
+
+export type SoundName = 'mention' | 'message' | 'join' | 'leave';
+
+/**
+ * One context, created on first use.
+ *
+ * Browsers refuse to start an AudioContext before a user gesture, so constructing it at
+ * module load would produce a suspended context and a console warning on every page load.
+ */
+let context: AudioContext | null = null;
+
+function audio(): AudioContext | null {
+  try {
+    context ??= new AudioContext();
+    // A context suspended by autoplay policy resumes once the page has been interacted
+    // with, which by the time a notification arrives it always has been.
+    if (context.state === 'suspended') void context.resume().catch(() => {});
+    return context;
+  } catch {
+    // No Web Audio at all. Silence is an acceptable degradation.
+    return null;
+  }
+}
+
+interface Tone {
+  /** Hertz. */
+  frequency: number;
+  /** Seconds from the start of the sound. */
+  at: number;
+  duration: number;
+}
+
+/**
+ * Each sound is a small melody.
+ *
+ * Rising intervals read as arrival, falling as departure — which is why join and leave
+ * are the same two notes in opposite orders, and why nobody has to be told which is which.
+ */
+const SOUNDS: Record<SoundName, { tones: Tone[]; gain: number }> = {
+  // Two rising notes, a perfect fourth apart: distinct enough to cut through, not shrill.
+  mention: { gain: 0.16, tones: [
+    { frequency: 660, at: 0, duration: 0.09 },
+    { frequency: 880, at: 0.08, duration: 0.13 },
+  ] },
+  // Quieter and flatter than a mention, because it is not addressed to you.
+  message: { gain: 0.08, tones: [{ frequency: 620, at: 0, duration: 0.07 }] },
+  join: { gain: 0.1, tones: [
+    { frequency: 520, at: 0, duration: 0.07 },
+    { frequency: 780, at: 0.06, duration: 0.1 },
+  ] },
+  leave: { gain: 0.1, tones: [
+    { frequency: 780, at: 0, duration: 0.07 },
+    { frequency: 520, at: 0.06, duration: 0.1 },
+  ] },
+};
+
+export function playSound(name: SoundName): void {
+  if (!useSettingsStore.getState().notificationSounds) return;
+
+  const ctx = audio();
+  if (!ctx) return;
+
+  const { tones, gain } = SOUNDS[name];
+  const start = ctx.currentTime;
+
+  for (const tone of tones) {
+    const oscillator = ctx.createOscillator();
+    const envelope = ctx.createGain();
+
+    oscillator.type = 'sine';
+    oscillator.frequency.value = tone.frequency;
+
+    /*
+     * A short attack and an exponential decay. A bare gain of 1 would click audibly at
+     * both ends, because a waveform cut mid-cycle is a step change — which is exactly
+     * what a click is.
+     */
+    const from = start + tone.at;
+    envelope.gain.setValueAtTime(0.0001, from);
+    envelope.gain.exponentialRampToValueAtTime(gain, from + 0.012);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, from + tone.duration);
+
+    oscillator.connect(envelope).connect(ctx.destination);
+    oscillator.start(from);
+    oscillator.stop(from + tone.duration + 0.02);
+  }
+}

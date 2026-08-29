@@ -356,6 +356,34 @@ Settings → Voice. The first four need no second user.
 - [ ] Where the browser has no `setSinkId` (Firefox), the output picker is disabled with an
       explanation rather than silently doing nothing
 
+### Video settings
+
+- [ ] Settings → Voice → **Video** lists your cameras, or says none was found
+- [ ] **Preview camera** shows you, mirrored, and names the device it opened
+- [ ] Switching camera while previewing restarts the preview on the new one
+- [ ] Closing settings releases the camera — the hardware indicator goes out
+- [ ] While in a call with camera on, changing camera swaps it without dropping the call
+
+### Notification sounds
+
+- [ ] A mention or DM plays a short two-note chime
+- [ ] Someone joining your voice channel plays a rising tone, leaving a falling one
+- [ ] You hear nothing for your own join or leave
+- [ ] You hear nothing for voice activity in a channel you are not in
+- [ ] Settings → Appearance → **Notification sounds** off silences all of it, and survives
+      a reload
+
+### Mark as read
+
+- [ ] Right-click a server → **Mark as read** clears every unread badge in it
+- [ ] Channels you have never opened are cleared too
+- [ ] A new message afterwards marks the channel unread again
+
+### Shortcuts sheet
+
+- [ ] `Ctrl`+`/` opens it, `Esc` or clicking outside closes it
+- [ ] On macOS the modifier shows as ⌘ rather than Ctrl
+
 ### Appearance
 
 - [ ] Settings → Appearance → **Light** — the whole app inverts immediately

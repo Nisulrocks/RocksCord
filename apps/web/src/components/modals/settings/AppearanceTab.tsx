@@ -28,6 +28,8 @@ export function AppearanceTab() {
   const toggleMemberList = useUiStore((s) => s.toggleMemberList);
   const theme = useSettingsStore((s) => s.theme);
   const setTheme = useSettingsStore((s) => s.setTheme);
+  const notificationSounds = useSettingsStore((s) => s.notificationSounds);
+  const setNotificationSounds = useSettingsStore((s) => s.setNotificationSounds);
 
   return (
     <div className="space-y-5">
@@ -70,6 +72,13 @@ export function AppearanceTab() {
         onChange={toggleMemberList}
         label="Show the member list"
         description="Hide it to give the conversation more room."
+      />
+
+      <Toggle
+        checked={notificationSounds}
+        onChange={setNotificationSounds}
+        label="Notification sounds"
+        description="A short tone for mentions and direct messages, and when someone joins or leaves your voice channel."
       />
     </div>
   );

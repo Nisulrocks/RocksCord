@@ -20,6 +20,8 @@ import type {
 } from '@rockscord/shared';
 import { API_BASE, getAccessToken, refreshAccessToken } from './api';
 import { useAppStore } from '../store/useAppStore';
+import { playSound } from './sounds';
+import { useVoiceStore } from '../store/useVoiceStore';
 import { handleVoiceSignal, handleVoicePeerLeft } from './voice';
 
 export type RocksCordSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -148,9 +150,23 @@ function registerHandlers(s: RocksCordSocket): void {
 
   /* Voice ---------------------------------------------------------------- */
 
-  s.on('voice:join', (participant) => store().upsertVoiceParticipant(participant));
+  /*
+   * Join and leave chimes, but only for the channel you are actually sitting in, and
+   * never for yourself. Hearing a tone because someone joined a call three channels away
+   * would be noise, and hearing one for your own arrival is just odd.
+   */
+  const inMyVoiceChannel = (channelId: string) =>
+    useVoiceStore.getState().channelId === channelId;
+
+  s.on('voice:join', (participant) => {
+    store().upsertVoiceParticipant(participant);
+    if (inMyVoiceChannel(participant.channelId) && participant.userId !== store().user?.id) {
+      playSound('join');
+    }
+  });
   s.on('voice:update', (participant) => store().upsertVoiceParticipant(participant));
   s.on('voice:leave', ({ channelId, userId }) => {
+    if (inMyVoiceChannel(channelId) && userId !== store().user?.id) playSound('leave');
     store().removeVoiceParticipant(channelId, userId);
     handleVoicePeerLeft(userId);
   });
@@ -161,6 +177,16 @@ function registerHandlers(s: RocksCordSocket): void {
   s.on('notification', (notification) => {
     store().pushNotification(notification);
     void showDesktopNotification(notification.title, notification.body);
+
+    /*
+     * A mention and a DM are addressed to you; a server invite or friend request is not
+     * as urgent, so it gets the quieter tone. The sound plays whether or not the window
+     * is focused, because the server only sends a notification for things worth knowing
+     * about -- it has already decided this is not noise.
+     */
+    playSound(
+      notification.type === 'mention' || notification.type === 'dm' ? 'mention' : 'message',
+    );
   });
 
   s.on('gateway:error', ({ code, message }) => {

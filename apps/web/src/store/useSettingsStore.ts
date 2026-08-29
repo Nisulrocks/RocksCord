@@ -28,9 +28,14 @@ export interface SettingsState {
    */
   inputDeviceId: string;
   outputDeviceId: string;
+  /** Which camera to send. Empty means whatever the system picks. */
+  cameraDeviceId: string;
 
   /** Playback level for everyone else, 0–1. */
   outputVolume: number;
+
+  /** Whether notifications make a sound. */
+  notificationSounds: boolean;
 
   /* Browser-side audio processing, applied when the microphone is opened. */
   echoCancellation: boolean;
@@ -40,7 +45,9 @@ export interface SettingsState {
   setTheme: (theme: ThemePreference) => void;
   setInputDeviceId: (id: string) => void;
   setOutputDeviceId: (id: string) => void;
+  setCameraDeviceId: (id: string) => void;
   setOutputVolume: (volume: number) => void;
+  setNotificationSounds: (enabled: boolean) => void;
   setAudioProcessing: (
     key: 'echoCancellation' | 'noiseSuppression' | 'autoGainControl',
     value: boolean,
@@ -51,7 +58,9 @@ const DEFAULTS = {
   theme: 'dark' as ThemePreference,
   inputDeviceId: '',
   outputDeviceId: '',
+  cameraDeviceId: '',
   outputVolume: 1,
+  notificationSounds: true,
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
@@ -67,7 +76,9 @@ export const useSettingsStore = create<SettingsState>()(
       setTheme: (theme) => set({ theme }),
       setInputDeviceId: (inputDeviceId) => set({ inputDeviceId }),
       setOutputDeviceId: (outputDeviceId) => set({ outputDeviceId }),
+      setCameraDeviceId: (cameraDeviceId) => set({ cameraDeviceId }),
       setOutputVolume: (outputVolume) => set({ outputVolume: clamp01(outputVolume) }),
+      setNotificationSounds: (notificationSounds) => set({ notificationSounds }),
       setAudioProcessing: (key, value) => set({ [key]: value } as Partial<SettingsState>),
     }),
     {
@@ -98,10 +109,12 @@ export const useSettingsStore = create<SettingsState>()(
           theme,
           inputDeviceId: text(saved.inputDeviceId, DEFAULTS.inputDeviceId),
           outputDeviceId: text(saved.outputDeviceId, DEFAULTS.outputDeviceId),
+          cameraDeviceId: text(saved.cameraDeviceId, DEFAULTS.cameraDeviceId),
           outputVolume:
             typeof saved.outputVolume === 'number' && Number.isFinite(saved.outputVolume)
               ? clamp01(saved.outputVolume)
               : DEFAULTS.outputVolume,
+          notificationSounds: flag(saved.notificationSounds, DEFAULTS.notificationSounds),
           echoCancellation: flag(saved.echoCancellation, DEFAULTS.echoCancellation),
           noiseSuppression: flag(saved.noiseSuppression, DEFAULTS.noiseSuppression),
           autoGainControl: flag(saved.autoGainControl, DEFAULTS.autoGainControl),

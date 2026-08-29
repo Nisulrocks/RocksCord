@@ -15,15 +15,17 @@ import { Headphones } from 'lucide-react';
 import clsx from 'clsx';
 import { LIMITS } from '@rockscord/shared';
 import { useSettingsStore } from '../../../store/useSettingsStore';
-import { useAudioDevices } from '../../../hooks/useAudioDevices';
+import { useMediaDevices } from '../../../hooks/useMediaDevices';
 import {
   isInVoice,
   reapplyAudioProcessing,
+  setCameraDevice,
   setInputDevice,
   setOutputDevice,
   setOutputVolume,
 } from '../../../lib/voice';
 import { MicTest } from '../../voice/MicTest';
+import { CameraPreview } from '../../voice/CameraPreview';
 import { Button, Toggle } from '../../ui/primitives';
 
 /** A labelled `<select>`, styled to match the app's inputs. */
@@ -66,9 +68,10 @@ function DeviceSelect({
 }
 
 export function VoiceTab() {
-  const devices = useAudioDevices();
+  const devices = useMediaDevices();
 
   const inputDeviceId = useSettingsStore((s) => s.inputDeviceId);
+  const cameraDeviceId = useSettingsStore((s) => s.cameraDeviceId);
   const outputDeviceId = useSettingsStore((s) => s.outputDeviceId);
   const outputVolume = useSettingsStore((s) => s.outputVolume);
   const echoCancellation = useSettingsStore((s) => s.echoCancellation);
@@ -77,6 +80,7 @@ export function VoiceTab() {
 
   const setInputDeviceId = useSettingsStore((s) => s.setInputDeviceId);
   const setOutputDeviceId = useSettingsStore((s) => s.setOutputDeviceId);
+  const setCameraDeviceId = useSettingsStore((s) => s.setCameraDeviceId);
   const setStoredVolume = useSettingsStore((s) => s.setOutputVolume);
   const setAudioProcessing = useSettingsStore((s) => s.setAudioProcessing);
 
@@ -90,6 +94,19 @@ export function VoiceTab() {
     setBusy(true);
     try {
       await setInputDevice(id);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const chooseCamera = async (id: string) => {
+    setCameraDeviceId(id);
+    // Swapping the outgoing track only matters during a call; otherwise the saved id is
+    // simply read the next time the camera is switched on.
+    if (!isInVoice()) return;
+    setBusy(true);
+    try {
+      await setCameraDevice(id);
     } finally {
       setBusy(false);
     }
@@ -215,6 +232,26 @@ export function VoiceTab() {
           The browser applies these as it captures, so changing one during a call briefly
           reopens your microphone.
         </p>
+      </section>
+
+      <section className="space-y-3">
+        <h4 className="text-[14px] font-semibold text-ink">Video</h4>
+
+        <DeviceSelect
+          label="Camera"
+          value={cameraDeviceId}
+          onChange={(id) => void chooseCamera(id)}
+          options={devices.cameras}
+          disabled={devices.cameras.length === 0}
+        />
+
+        {devices.cameras.length === 0 ? (
+          <p className="text-[12.5px] text-ink-faint">
+            No camera was found. Screen sharing still works without one.
+          </p>
+        ) : (
+          <CameraPreview />
+        )}
       </section>
 
       <section className="rounded-lg border border-line bg-surface-3 p-4">

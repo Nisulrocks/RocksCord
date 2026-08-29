@@ -31,6 +31,7 @@ import { FriendsView } from '../components/home/FriendsView';
 import { VoiceRoom } from '../components/voice/VoiceRoom';
 import { ConnectionBanner } from '../components/layout/ConnectionBanner';
 import { QuickSwitcher } from '../components/modals/QuickSwitcher';
+import { ShortcutsOverlay } from '../components/modals/ShortcutsOverlay';
 import { useAutoIdle } from '../hooks/useAutoIdle';
 import { Spinner } from '../components/ui/primitives';
 
@@ -39,6 +40,7 @@ export function AppShell({ onLogout }: { onLogout: () => Promise<void> }) {
   const navigate = useNavigate();
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   // Idle after five minutes away, back on activity. Only ever touches "online".
   useAutoIdle();
@@ -53,9 +55,15 @@ export function AppShell({ onLogout }: { onLogout: () => Promise<void> }) {
    */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      if (!(event.ctrlKey || event.metaKey)) return;
+
+      if (event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setSwitcherOpen((open) => !open);
+      } else if (event.key === '/') {
+        // The near-universal convention for "what are the shortcuts".
+        event.preventDefault();
+        setShortcutsOpen((open) => !open);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -197,6 +205,7 @@ export function AppShell({ onLogout }: { onLogout: () => Promise<void> }) {
       )}
 
       {switcherOpen && <QuickSwitcher onClose={() => setSwitcherOpen(false)} />}
+      {shortcutsOpen && <ShortcutsOverlay onClose={() => setShortcutsOpen(false)} />}
     </div>
   );
 }

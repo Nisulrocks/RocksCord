@@ -1,5 +1,5 @@
 /**
- * The list of microphones and speakers the browser will admit to.
+ * The microphones, speakers, and cameras the browser will admit to.
  *
  * Two quirks shape this hook, and both are privacy features rather than bugs:
  *
@@ -22,9 +22,10 @@ export interface AudioDevice {
   label: string;
 }
 
-export interface AudioDevices {
+export interface MediaDevices {
   inputs: AudioDevice[];
   outputs: AudioDevice[];
+  cameras: AudioDevice[];
   /** False while labels are still hidden, i.e. microphone permission has never been given. */
   labelled: boolean;
   /** False where the browser does not expose output devices at all (Firefox). */
@@ -42,9 +43,10 @@ const CAN_CHOOSE_OUTPUT =
     ? 'setSinkId' in HTMLMediaElement.prototype
     : false;
 
-export function useAudioDevices(enabled = true): AudioDevices {
+export function useMediaDevices(enabled = true): MediaDevices {
   const [inputs, setInputs] = useState<AudioDevice[]>([]);
   const [outputs, setOutputs] = useState<AudioDevice[]>([]);
+  const [cameras, setCameras] = useState<AudioDevice[]>([]);
   const [labelled, setLabelled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,11 +63,15 @@ export function useAudioDevices(enabled = true): AudioDevices {
 
       const microphones = all.filter((d) => d.kind === 'audioinput');
       const speakers = all.filter((d) => d.kind === 'audiooutput');
+      const webcams = all.filter((d) => d.kind === 'videoinput');
 
       /*
        * A non-empty label on any device means permission has been granted. Checking the
        * Permissions API instead would be cleaner but is not implemented consistently for
        * microphones, and this is the fact actually being asked about.
+       *
+       * Microphone permission alone reveals labels for every kind, cameras included, so
+       * one prompt is enough for the whole list.
        */
       setLabelled(microphones.some((d) => d.label !== ''));
 
@@ -76,6 +82,7 @@ export function useAudioDevices(enabled = true): AudioDevices {
 
       setInputs(microphones.map((d, i) => named(d, i, 'Microphone')));
       setOutputs(speakers.map((d, i) => named(d, i, 'Speaker')));
+      setCameras(webcams.map((d, i) => named(d, i, 'Camera')));
       setError(null);
     } catch {
       setError('Could not read the list of audio devices.');
@@ -115,6 +122,7 @@ export function useAudioDevices(enabled = true): AudioDevices {
   return {
     inputs,
     outputs,
+    cameras,
     labelled,
     outputSelectable: CAN_CHOOSE_OUTPUT,
     loading,
