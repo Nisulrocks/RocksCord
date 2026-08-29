@@ -12,7 +12,7 @@
  * interfering -- and the desktop app is genuinely the same server, not a reimplementation.
  */
 
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cookie from '@fastify/cookie';
@@ -48,6 +48,36 @@ import notificationRoutes from './routes/notifications.js';
 import voiceRoutes from './routes/voice.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The running version, for `/health`.
+ *
+ * Read from the manifest rather than written here, because a hard-coded copy is a claim
+ * that silently stops being true the first time anyone bumps the real one -- and a health
+ * endpoint reporting the wrong version is worse than one reporting none.
+ *
+ * Cached: this is on a route that monitoring hits every few minutes.
+ */
+let cachedVersion: string | null = null;
+
+function appVersion(): string {
+  if (cachedVersion !== null) return cachedVersion;
+
+  let resolved = 'unknown';
+  try {
+    const manifest: unknown = JSON.parse(
+      readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'),
+    );
+    const version = (manifest as { version?: unknown }).version;
+    if (typeof version === 'string') resolved = version;
+  } catch {
+    // Packaged builds may not ship the workspace manifest; the desktop app reports its
+    // own version through Electron instead.
+  }
+
+  cachedVersion = resolved;
+  return resolved;
+}
 
 export interface BuildAppOptions {
   /** Supply an existing database (tests do this). Otherwise one is opened from env. */
@@ -262,7 +292,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
     status: 'ok',
     database: (await pingDb(db)) ? 'up' : 'down',
     uptimeSeconds: Math.round(process.uptime()),
-    version: '1.0.0',
+    version: appVersion(),
   }));
 
   await app.register(
