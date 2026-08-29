@@ -11,21 +11,13 @@ into the executable and used to need a hand-delivered file.
 
 ## One-time setup
 
-### 1. A public releases repository
+### 1. Make the repository public
 
-Create an empty **public** repository called **`RocksCord-releases`** under your account.
-Nothing goes in it but build artifacts.
+Updates are served from GitHub Releases, and the feed has to be readable without
+credentials — it is written into every copy of the app as `app-update.yml`, so a private
+repo would mean shipping an extractable GitHub token inside the exe.
 
-It has to be public, and the reason matters. Whatever feed you configure is written into
-every copy of the app as `app-update.yml`; pointing it at a private repository would mean
-shipping a GitHub token inside the exe, which anyone could extract. A separate public
-repository keeps your source private while letting the installer be downloaded
-anonymously.
-
-> Prefer to make the main repo public instead? Change `repo:` in
-> [`apps/desktop/electron-builder.yml`](../apps/desktop/electron-builder.yml) to
-> `RocksCord` and skip this step. For a portfolio project that is often what you want
-> anyway.
+**Settings → General → Danger Zone → Change visibility → Public.**
 
 ### 2. A token
 
@@ -58,16 +50,16 @@ publishing without a bump uploads a release that no installed copy will ever not
 npm run build:exe -- --server=https://rockscord.onrender.com --release
 ```
 
-That stages the app, packages the installer, and uploads it to the releases repository
-along with `latest.yml`, which is the file installed copies read.
+That stages the app, packages the installer, and uploads it to GitHub Releases along with
+`latest.yml`, which is the file installed copies read.
 
 Without `--release` it builds locally and publishes nothing, which is what you want while
 iterating.
 
 ### 3. Check the release exists
 
-Open `https://github.com/YOUR-NAME/RocksCord-releases/releases`. You should see the new
-version with `RocksCord-Setup-<version>.exe` and `latest.yml` attached.
+Open `https://github.com/Nisulrocks/RocksCord/releases`. You should see the new version
+with `RocksCord-Setup-<version>.exe` and `latest.yml` attached.
 
 If electron-builder created it as a **draft**, publish it — a draft is invisible to the
 updater.
@@ -128,13 +120,12 @@ If you only touched the first three, do not cut a release — there is nothing i
 does not carry over.
 
 **Uploads fail with 404**
-The releases repository does not exist yet, or `owner`/`repo` in `electron-builder.yml`
-does not match it.
+`owner`/`repo` in `electron-builder.yml` does not match your repository.
 
 **The log shows `auto-update: check failed: 404`**
-Same cause, seen from the app side: it is looking at a feed that is not there. Harmless —
-the app keeps working — but no update will ever arrive until the repository exists and has
-a published release.
+Same cause from the app side: it is looking at a feed that is not there. Harmless — the
+app keeps working — but nothing arrives until the repo is public and has a published
+release.
 
 **Nothing happens even though a release exists**
 Check the version is actually higher than the installed one, and that the release is

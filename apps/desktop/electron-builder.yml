@@ -42,15 +42,13 @@ buildDependenciesFromSource: false
 
 # Where the app looks for updates, and where `--publish` uploads them.
 #
-# It must be a location that can be read WITHOUT credentials: whatever is configured here
-# is written into the packaged app as `app-update.yml`, so a private repository would mean
-# shipping a GitHub token inside every copy of the exe -- extractable by anyone who has
-# one. A public releases repository keeps the source private while letting the artifacts
-# be fetched anonymously.
+# This has to be readable without credentials: it is written into every copy of the app as
+# `app-update.yml`, so a private repo would mean shipping a GitHub token inside the exe.
+# The repository must be public.
 publish:
   provider: github
   owner: Nisulrocks
-  repo: RocksCord-releases
+  repo: RocksCord
   releaseType: release
 
 win:
