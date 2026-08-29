@@ -102,6 +102,16 @@ jobs:
   android:
     runs-on: ubuntu-latest
 
+    # The release is created by the Windows job's publish step, so there is nothing to
+    # attach an APK to until that has finished. Run in parallel and this job wins the race
+    # on most runs -- it is far quicker -- and fails with a bare "release not found".
+    #
+    # `always()` keeps the APK building even when the desktop build fails, so a broken
+    # installer does not also cost the Android app; the upload step below handles the
+    # release being absent in that case.
+    needs: windows
+    if: always()
+
     steps:
       - uses: actions/checkout@v4
 
@@ -167,4 +177,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # `--clobber` so re-running a release replaces the asset instead of failing on a
         # name that already exists.
-        run: gh release upload "$GITHUB_REF_NAME" "${{ steps.apk.outputs.path }}" --clobber
+        #
+        # Absent release is not treated as an error: it means the desktop build failed
+        # before creating one, which is already reported by that job. Failing here too
+        # would just bury a working APK under a second red cross.
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${{ steps.apk.outputs.path }}" --clobber
+          else
+            echo "No release for $GITHUB_REF_NAME yet; the APK is attached to this run instead."
+          fi
