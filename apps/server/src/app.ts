@@ -249,13 +249,31 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
         discriminator: users.discriminator,
         displayName: users.displayName,
         email: users.email,
+        passwordChangedAt: users.passwordChangedAt,
       })
       .from(users)
       .where(and(eq(users.id, claims.sub), isNull(users.deletedAt)))
       .limit(1);
 
     if (!row) return null;
-    return { ...row, sessionId: claims.sid };
+
+    /*
+     * Reject tokens minted before the password changed.
+     *
+     * Same shape of hole as the tombstone check above: revoking sessions stops refresh,
+     * but an access token already in flight keeps working until it expires. For a
+     * password *reset* that is the whole point of the exercise -- someone resetting has
+     * usually lost control of the account, and a fifteen-minute grace period for whoever
+     * took it is not a grace period worth having.
+     *
+     * Compared at second granularity because `iat` is whole seconds. A token issued in
+     * the same second as the change survives, which is what keeps the caller's own new
+     * token working after an in-app password change.
+     */
+    if ((claims.iat ?? 0) < Math.floor(row.passwordChangedAt / 1000)) return null;
+
+    const { passwordChangedAt: _ignored, ...user } = row;
+    return { ...user, sessionId: claims.sid };
   }
 
   function extractToken(header: string | undefined): string | null {

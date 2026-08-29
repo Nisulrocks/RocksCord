@@ -147,6 +147,19 @@ const schema = z.object({
     .int()
     .min(300)
     .default(60 * 60 * 24),
+
+  /**
+   * How long a password reset link stays valid.
+   *
+   * Much shorter than a verification link, and for a different reason: this one is a
+   * live credential sitting in an inbox. A day is fine for "confirm this is your
+   * address", but an hour is the right order for "this changes the password".
+   */
+  PASSWORD_RESET_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(300)
+    .default(60 * 60),
 });
 
 export type Env = z.infer<typeof schema> & {

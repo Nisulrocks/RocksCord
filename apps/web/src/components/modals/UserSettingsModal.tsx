@@ -240,23 +240,47 @@ function ProfileTab({ user }: { user: SelfUser }) {
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Which box an error is about.
+ *
+ * Errors used to be a bare string rendered under "New password" whatever their cause, so
+ * "Your current password is incorrect" underlined the field that was fine and left the
+ * one at fault unmarked. Tagging the message with its field is what keeps the highlight
+ * and the sentence pointing at the same place. `form` is for errors about the request
+ * rather than any single input.
+ */
+type PasswordField = 'current' | 'next' | 'confirm';
+interface PasswordError {
+  field: PasswordField | 'form';
+  message: string;
+}
+
 function AccountTab({ user }: { user: SelfUser }) {
   const toast = useUiStore((s) => s.toast);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<PasswordError | null>(null);
   const [busy, setBusy] = useState(false);
+
+  /** The message for a field, or undefined when the error belongs to a different one. */
+  const errorFor = (field: PasswordField) =>
+    error?.field === field ? error.message : undefined;
 
   const submit = async () => {
     if (next !== confirm) {
-      setError('The new passwords do not match');
+      setError({ field: 'confirm', message: 'The new passwords do not match' });
       return;
     }
 
     const parsed = changePasswordSchema.safeParse({ currentPassword: current, newPassword: next });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Check the password');
+      const issue = parsed.error.issues[0];
+      setError({
+        // The schema covers both fields, so follow the issue rather than assuming.
+        field: issue?.path[0] === 'currentPassword' ? 'current' : 'next',
+        message: issue?.message ?? 'Check the password',
+      });
       return;
     }
 
@@ -269,7 +293,17 @@ function AccountTab({ user }: { user: SelfUser }) {
       setConfirm('');
       toast('Password changed. Other sessions were signed out.', 'success');
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : 'Could not change your password');
+      /*
+       * A rejected password is the one error that is about a specific field, and the only
+       * one the user can act on by editing a box. Everything else -- rate limits, a dropped
+       * connection -- is about the request, so it goes under the button that made it.
+       */
+      const rejected = err instanceof ApiClientError && err.code === 'INVALID_CREDENTIALS';
+      setError({
+        field: rejected ? 'current' : 'form',
+        message:
+          err instanceof ApiClientError ? err.message : 'Could not change your password',
+      });
     } finally {
       setBusy(false);
     }
@@ -289,32 +323,40 @@ function AccountTab({ user }: { user: SelfUser }) {
         </p>
 
         <div className="space-y-3">
-          <Field label="Current password" required>
+          <Field label="Current password" error={errorFor('current')} required>
             <Input
               type="password"
               autoComplete="current-password"
               value={current}
               onChange={(event) => setCurrent(event.target.value)}
+              invalid={Boolean(errorFor('current'))}
             />
           </Field>
-          <Field label="New password" error={error ?? undefined} required>
+          <Field label="New password" error={errorFor('next')} required>
             <Input
               type="password"
               autoComplete="new-password"
               value={next}
               onChange={(event) => setNext(event.target.value)}
-              invalid={Boolean(error)}
+              invalid={Boolean(errorFor('next'))}
             />
           </Field>
-          <Field label="Confirm new password" required>
+          <Field label="Confirm new password" error={errorFor('confirm')} required>
             <Input
               type="password"
               autoComplete="new-password"
               value={confirm}
               onChange={(event) => setConfirm(event.target.value)}
+              invalid={Boolean(errorFor('confirm'))}
             />
           </Field>
         </div>
+
+        {error?.field === 'form' && (
+          <p className="mt-3 text-[12.5px] text-danger" role="alert">
+            {error.message}
+          </p>
+        )}
 
         <Button
           className="mt-4"

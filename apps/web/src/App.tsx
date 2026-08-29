@@ -10,6 +10,8 @@ import { useAppStore } from './store/useAppStore';
 import { AuthPage } from './pages/AuthPage';
 import { AppShell } from './pages/AppShell';
 import { InvitePage } from './pages/InvitePage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ContextMenu, Toasts } from './components/ui/Overlays';
 import { ModalHost } from './components/modals/ModalHost';
 import { ProfileCard } from './components/ProfileCard';
@@ -46,6 +48,14 @@ export function App() {
         {/* An invite link works signed out: it shows the preview and then the login form. */}
         <Route path="/invite/:code" element={<InvitePage signedIn={phase === 'signed-in'} />} />
 
+        {/*
+         * Outside the signed-in branch, like invites, because a reset link is often
+         * opened on the device that is still signed in -- which is exactly the case where
+         * someone is trying to lock an intruder out. Sent to `/friends` instead, it would
+         * appear to do nothing.
+         */}
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+
         {phase === 'signed-in' ? (
           <>
             <Route path="/channels/:serverId/:channelId?" element={<AppShell onLogout={logout} />} />
@@ -57,6 +67,7 @@ export function App() {
           <>
             <Route path="/login" element={<AuthPage mode="login" onLogin={login} onRegister={register} />} />
             <Route path="/register" element={<AuthPage mode="register" onLogin={login} onRegister={register} />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
           </>
         )}

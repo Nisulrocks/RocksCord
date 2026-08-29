@@ -58,6 +58,19 @@ export const users = sqliteTable(
     discriminator: text('discriminator').notNull(),
     displayName: text('display_name').notNull(),
     passwordHash: text('password_hash').notNull(),
+    /**
+     * When the password last changed, as a cut-off for access tokens.
+     *
+     * Revoking sessions kills *refresh*, but an access token already minted stays
+     * cryptographically valid until it expires -- so without this, changing a password
+     * leaves every signed-in device working for up to fifteen more minutes. That is the
+     * exact window a password reset exists to close, and the reset screen promises it is
+     * closed. Tokens carry `iat`, and the user row is already loaded on every request, so
+     * comparing the two costs nothing.
+     *
+     * 0 for accounts that have never changed one, which no token can predate.
+     */
+    passwordChangedAt: integer('password_changed_at').notNull().default(0),
     avatarUrl: text('avatar_url'),
     bio: text('bio'),
     /** Last status the user explicitly chose; presence overlays "offline" when no socket. */
@@ -104,6 +117,40 @@ export const emailVerifications = sqliteTable(
     uniqueIndex('email_verifications_token_hash_unique').on(t.tokenHash),
     index('email_verifications_user_idx').on(t.userId),
     index('email_verifications_expires_idx').on(t.expiresAt),
+  ],
+);
+
+/**
+ * Password reset links.
+ *
+ * Deliberately a separate table from `email_verifications` rather than a `purpose`
+ * column on one. The two prove different things and carry different blast radii -- a
+ * verification token confirms an address, a reset token *is* the account -- and keeping
+ * them apart makes it impossible for a bug in one flow to accept a token minted by the
+ * other.
+ *
+ * `email` records the address the link was sent to, for the same reason it does there:
+ * if the account's address changes before the link is used, a token sitting in the old
+ * inbox must stop working.
+ */
+export const passwordResets = sqliteTable(
+  'password_resets',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    createdAt: integer('created_at').notNull().default(now),
+    expiresAt: integer('expires_at').notNull(),
+    /** Set on use, so a link that has already changed a password cannot change it again. */
+    consumedAt: integer('consumed_at'),
+  },
+  (t) => [
+    uniqueIndex('password_resets_token_hash_unique').on(t.tokenHash),
+    index('password_resets_user_idx').on(t.userId),
+    index('password_resets_expires_idx').on(t.expiresAt),
   ],
 );
 

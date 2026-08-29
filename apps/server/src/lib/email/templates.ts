@@ -61,11 +61,43 @@ export function verificationText({ name, link, expiresIn, appName }: Verificatio
   ].join('\n');
 }
 
-export function verificationHtml(input: VerificationTemplateInput): string {
-  const name = escapeHtml(input.name);
-  const link = escapeHtml(input.link);
-  const expiresIn = escapeHtml(input.expiresIn);
+/* -------------------------------------------------------------------------- */
+/* Shared layout                                                               */
+/* -------------------------------------------------------------------------- */
+
+interface ActionEmailInput {
+  appName: string;
+  /** Greeting name. */
+  name: string;
+  /** The grey line clients show beside the subject in the inbox list. */
+  preheader: string;
+  /** One sentence under the greeting, saying what the button will do. */
+  intro: string;
+  buttonLabel: string;
+  link: string;
+  /** The small print under the rule: the expiry, and a "not you?" note. */
+  footer: string;
+}
+
+/**
+ * The one message shell, shared by every transactional email.
+ *
+ * Both messages are the same object -- a greeting, a sentence, one button, the raw URL,
+ * and small print -- and the fifty lines of nested tables that make that survive Outlook
+ * are exactly the part nobody wants to maintain twice. Only the words differ, so only
+ * the words are arguments.
+ *
+ * Escaping happens here rather than at the call sites, so a message added later cannot
+ * forget to do it.
+ */
+function actionEmailHtml(input: ActionEmailInput): string {
   const appName = escapeHtml(input.appName);
+  const name = escapeHtml(input.name);
+  const preheader = escapeHtml(input.preheader);
+  const intro = escapeHtml(input.intro);
+  const buttonLabel = escapeHtml(input.buttonLabel);
+  const link = escapeHtml(input.link);
+  const footer = escapeHtml(input.footer);
 
   return `<!doctype html>
 <html>
@@ -76,9 +108,7 @@ export function verificationHtml(input: VerificationTemplateInput): string {
   </head>
   <body style="margin:0;padding:0;background:#f4f4f7;">
     <!-- Preheader: the grey line clients show next to the subject in the inbox list. -->
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-      Confirm your email address to finish setting up your ${appName} account.
-    </div>
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${preheader}</div>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f7;">
       <tr>
@@ -93,9 +123,7 @@ export function verificationHtml(input: VerificationTemplateInput): string {
             <tr>
               <td style="padding:8px 32px 0 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
                 <p style="margin:0 0 12px 0;font-size:15px;line-height:22px;color:${INK};">Hi ${name},</p>
-                <p style="margin:0 0 24px 0;font-size:15px;line-height:22px;color:${DIM};">
-                  Confirm this email address to finish setting up your account.
-                </p>
+                <p style="margin:0 0 24px 0;font-size:15px;line-height:22px;color:${DIM};">${intro}</p>
               </td>
             </tr>
             <tr>
@@ -104,7 +132,7 @@ export function verificationHtml(input: VerificationTemplateInput): string {
                    style="display:inline-block;background:${BRAND};color:#ffffff;text-decoration:none;
                           font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
                           font-size:15px;font-weight:600;padding:12px 26px;border-radius:9px;">
-                  Confirm email address
+                  ${buttonLabel}
                 </a>
               </td>
             </tr>
@@ -120,11 +148,7 @@ export function verificationHtml(input: VerificationTemplateInput): string {
             <tr>
               <td style="padding:24px 32px 32px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
                 <hr style="border:none;border-top:1px solid #e9e9f0;margin:0 0 16px 0;">
-                <p style="margin:0;font-size:12px;line-height:19px;color:#8a8a9c;">
-                  The link expires in ${expiresIn}. If you did not create a ${appName}
-                  account, ignore this message &mdash; nothing was set up, and you will not
-                  hear from us again.
-                </p>
+                <p style="margin:0;font-size:12px;line-height:19px;color:#8a8a9c;">${footer}</p>
               </td>
             </tr>
           </table>
@@ -133,6 +157,79 @@ export function verificationHtml(input: VerificationTemplateInput): string {
     </table>
   </body>
 </html>`;
+}
+
+export function verificationHtml(input: VerificationTemplateInput): string {
+  return actionEmailHtml({
+    appName: input.appName,
+    name: input.name,
+    preheader: `Confirm your email address to finish setting up your ${input.appName} account.`,
+    intro: 'Confirm this email address to finish setting up your account.',
+    buttonLabel: 'Confirm email address',
+    link: input.link,
+    footer:
+      `The link expires in ${input.expiresIn}. If you did not create a ${input.appName} ` +
+      'account, ignore this message — nothing was set up, and you will not hear from us ' +
+      'again.',
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Password reset                                                              */
+/* -------------------------------------------------------------------------- */
+
+export interface PasswordResetTemplateInput {
+  name: string;
+  /** Absolute URL of the reset form, carrying the token. */
+  link: string;
+  expiresIn: string;
+  appName: string;
+}
+
+export function passwordResetSubject(appName: string): string {
+  return `Reset your ${appName} password`;
+}
+
+/**
+ * The "if this was not you" line is load-bearing rather than boilerplate.
+ *
+ * Anyone can type someone else's address into the form, so a share of these messages
+ * arrive with people who did not ask for one. Saying plainly that ignoring it leaves the
+ * password unchanged is what keeps that from being alarming, and stops the recipient
+ * clicking the link to find out what it does — which is the one thing they should not do.
+ */
+export function passwordResetText({
+  name,
+  link,
+  expiresIn,
+  appName,
+}: PasswordResetTemplateInput): string {
+  return [
+    `Hi ${name},`,
+    '',
+    `Someone asked to reset the password on your ${appName} account. Choose a new one here:`,
+    '',
+    link,
+    '',
+    `The link expires in ${expiresIn} and can only be used once.`,
+    '',
+    'If this was not you, ignore this message -- your password has not changed, and',
+    'nobody can sign in without it.',
+  ].join('\n');
+}
+
+export function passwordResetHtml(input: PasswordResetTemplateInput): string {
+  return actionEmailHtml({
+    appName: input.appName,
+    name: input.name,
+    preheader: `Choose a new ${input.appName} password.`,
+    intro: `Someone asked to reset the password on your ${input.appName} account. Choose a new one below.`,
+    buttonLabel: 'Choose a new password',
+    link: input.link,
+    footer:
+      `The link expires in ${input.expiresIn} and can only be used once. If this was not ` +
+      'you, ignore this message — your password has not changed.',
+  });
 }
 
 /* -------------------------------------------------------------------------- */

@@ -1,10 +1,14 @@
-# Email verification
+# Email
 
-**Currently off.** Registration signs people straight in. Everything below describes how to
-switch it on when you have a mail provider that actually delivers.
+Two features send mail, and they are independent of each other.
 
-The machinery is built, tested, and shipped — it is the enforcement that is disabled, by a
-single environment variable.
+**Password reset** works whenever a provider is configured. There is no switch: if mail
+can be sent, people who forget their password can get back in, and if it cannot, they
+cannot. This is the reason to configure a provider even if you never want verification.
+
+**Email verification** is **currently off**. Registration signs people straight in.
+The machinery is built, tested, and shipped — it is the enforcement that is disabled, by
+a single environment variable, and the rest of this page is mostly about turning that on.
 
 ---
 
@@ -36,7 +40,10 @@ Enforcement is now an explicit decision you make after seeing mail arrive.
 - Registration creates the account and signs the user straight in.
 - `emailVerifiedAt` is stamped immediately, so nobody is left in limbo if you switch
   enforcement on later.
-- No email is sent and no provider is contacted.
+- No email is sent at registration, and no provider is contacted for it.
+- Password reset is unaffected: with a provider configured it still sends links, and a
+  successful reset marks the address verified, since arriving at the link proves the
+  mailbox works.
 
 Existing unverified accounts — including any stranded during earlier attempts — can sign in
 normally.
@@ -145,7 +152,31 @@ path without an account anywhere.
 | `EMAIL_API_KEY` | — | Brevo key (`xkeysib-…`). Selects Brevo when set |
 | `EMAIL_FROM` | — | Sender address confirmed with Brevo. Required alongside the key |
 | `EMAIL_FROM_NAME` | `RocksCord` | Display name on the message |
-| `EMAIL_VERIFICATION_TTL_SECONDS` | `86400` | How long a link stays valid |
+| `EMAIL_VERIFICATION_TTL_SECONDS` | `86400` | How long a confirmation link stays valid |
+| `PASSWORD_RESET_TTL_SECONDS` | `3600` | How long a reset link stays valid. Shorter on purpose: it is a live credential, not a claim about an address |
+
+---
+
+## Password reset
+
+Nothing to switch on. `Forgot your password?` on the sign-in form asks for an address, and
+if an account uses it, a one-hour link arrives.
+
+What the flow guarantees:
+
+- The reply is identical whether or not the address has an account. Anything else would
+  make the form a way to test who has one here.
+- The link works once. Using it, letting it expire, or asking for another all retire it.
+- A successful reset signs out **every** device, unlike an in-app password change, which
+  keeps the tab you are sitting at. Someone resetting has usually lost control of the
+  account, so nothing signed in is assumed to be theirs.
+- Access tokens already issued stop working immediately. Revoking sessions alone would
+  leave whoever holds one with up to fifteen more minutes of access, which is exactly the
+  window a reset exists to close.
+
+With no provider configured, the link is written to the server log instead. That is enough
+to exercise the whole flow locally, and useless in production — so on a real deployment,
+a forgotten password is unrecoverable until you configure one.
 
 ---
 

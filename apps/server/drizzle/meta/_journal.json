@@ -29,6 +29,20 @@
       "when": 1787987129733,
       "tag": "0003_custom_emoji",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788002058883,
+      "tag": "0004_password_reset",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788017066735,
+      "tag": "0005_password_changed_at",
+      "breakpoints": true
     }
   ]
 }

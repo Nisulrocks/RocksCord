@@ -13,6 +13,9 @@
 import { env } from '../../env.js';
 import { createBrevoDriver } from './brevo.js';
 import {
+  passwordResetHtml,
+  passwordResetSubject,
+  passwordResetText,
   verificationHtml,
   verificationSubject,
   verificationText,
@@ -139,5 +142,29 @@ export async function sendVerificationEmail(input: VerificationEmail): Promise<v
     subject: verificationSubject(APP_NAME),
     html: verificationHtml(templateInput),
     text: verificationText(templateInput),
+  });
+}
+
+export interface PasswordResetEmail {
+  to: string;
+  /** Shown in the greeting. */
+  name: string;
+  /** The absolute URL of the reset form, with the token in the query string. */
+  link: string;
+}
+
+export async function sendPasswordResetEmail(input: PasswordResetEmail): Promise<void> {
+  const templateInput = {
+    name: input.name,
+    link: input.link,
+    expiresIn: describeTtl(env.PASSWORD_RESET_TTL_SECONDS),
+    appName: APP_NAME,
+  };
+
+  await getEmailDriver().send({
+    to: input.to,
+    subject: passwordResetSubject(APP_NAME),
+    html: passwordResetHtml(templateInput),
+    text: passwordResetText(templateInput),
   });
 }

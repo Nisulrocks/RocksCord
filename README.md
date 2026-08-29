@@ -29,7 +29,8 @@ rejoining.
 bans, and an audit log.
 
 **Accounts** — Argon2id passwords, rotating refresh tokens, avatars, custom status,
-presence with automatic idle, friends, and optional email verification.
+presence with automatic idle, friends, password reset by email, and optional email
+verification.
 
 **Quality of life** — `Ctrl`+`K` quick switcher, `Ctrl`+`/` shortcut sheet, mark a whole
 server read, notification sounds, and light/dark/system themes.
@@ -111,7 +112,7 @@ Everything has a working default; `npm run setup` writes a `.env` for you.
 | `PUBLIC_URL` | detected | Base URL for attachment links |
 | `STORAGE_DRIVER` | `local` | `local` or `supabase` |
 | `CORS_ORIGIN` | `*` | Comma-separated origins |
-| `EMAIL_API_KEY` | — | Brevo key; enables verification emails |
+| `EMAIL_API_KEY` | — | Brevo key; enables verification and password-reset emails |
 | `REQUIRE_EMAIL_VERIFICATION` | `false` | Whether unverified accounts can sign in |
 
 ---
@@ -159,7 +160,7 @@ After that, `git push` deploys. Full walkthrough in
 ## Testing
 
 ```bash
-npm test          # 194 tests
+npm test          # 211 tests
 npm run smoke     # end-to-end against a running server
 ```
 
@@ -176,6 +177,7 @@ checklist and instructions for testing with several users at once.
 | Passwords | Argon2id, 19 MiB / 2 passes |
 | Sessions | 15-minute access tokens in memory, 30-day refresh tokens in `httpOnly` cookies, rotated on use |
 | Token theft | Replaying a rotated refresh token revokes every session for the account |
+| Password change | Access tokens minted before the change stop working, so a reset signs other devices out at once rather than in 15 minutes |
 | Authorisation | Re-resolved server-side on every mutating route |
 | Channel privacy | Hidden channels 404, are absent from listings, and are never fanned out over the socket |
 | XSS | Messages render as React elements from parsed tokens; `innerHTML` is never used |
@@ -184,7 +186,7 @@ checklist and instructions for testing with several users at once.
 | Rate limiting | Per-user when authenticated, per-IP otherwise |
 | Input | Zod on every request body; control and bidi characters stripped |
 
-Not production-hardened: no password reset, 2FA, or CAPTCHA.
+Not production-hardened: no 2FA or CAPTCHA.
 
 ---
 
@@ -201,6 +203,8 @@ Not production-hardened: no password reset, 2FA, or CAPTCHA.
 - The portable exe cannot self-update.
 - The executable is unsigned, so SmartScreen warns on first run.
 - Email verification is off by default; see [docs/EMAIL.md](docs/EMAIL.md).
+- Password reset needs a configured email provider; without one there is no way back into
+  an account whose password is lost.
 
 ---
 
@@ -213,7 +217,7 @@ Not production-hardened: no password reset, 2FA, or CAPTCHA.
 | [SHARING.md](docs/SHARING.md) | Getting the app to your friends |
 | [TESTING.md](docs/TESTING.md) | Automated tests and a manual checklist |
 | [RELEASING.md](docs/RELEASING.md) | Cutting a desktop release |
-| [EMAIL.md](docs/EMAIL.md) | Email verification setup |
+| [EMAIL.md](docs/EMAIL.md) | Email provider setup, password reset, and verification |
 
 ---
 

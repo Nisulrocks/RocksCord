@@ -8,6 +8,8 @@
  *   POST /api/auth/logout-all revoke every session for the account
  *   GET  /api/auth/me         the signed-in user
  *   PATCH /api/auth/password  change password (revokes all other sessions)
+ *   POST /api/auth/forgot-password  email a reset link
+ *   POST /api/auth/reset-password   spend that link and set a new password
  *
  * Rate limits here are tighter than the global default because these are the endpoints
  * worth brute-forcing.
@@ -17,14 +19,16 @@ import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   changePasswordSchema,
+  forgotPasswordSchema,
   loginSchema,
   registerSchema,
   resendVerificationSchema,
+  resetPasswordSchema,
   verifyEmailSchema,
   LIMITS,
 } from '@rockscord/shared';
 import { env } from '../env.js';
-import { emailVerifications, sessions, users } from '../db/schema.js';
+import { emailVerifications, passwordResets, sessions, users } from '../db/schema.js';
 import {
   REFRESH_COOKIE_NAME,
   clearedRefreshCookieOptions,
@@ -41,6 +45,7 @@ import {
 import {
   emailVerificationRequired,
   getEmailDriver,
+  sendPasswordResetEmail,
   sendVerificationEmail,
 } from '../lib/email/index.js';
 import { verificationResultPage } from '../lib/email/templates.js';
@@ -171,6 +176,60 @@ async function issueVerification(db: Database, user: UserRow): Promise<void> {
     name: user.displayName || user.username,
     link: verificationLink(token),
   });
+}
+
+/**
+ * The reset form lives in the web client, not on the API.
+ *
+ * Unlike a verification link, which only has to be *followed*, this one has to collect a
+ * new password -- so it points at a React route that posts back to `/reset-password`.
+ */
+function passwordResetLink(token: string): string {
+  return `${env.PUBLIC_URL}/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Mint a reset token for `user` and email the link.
+ *
+ * Outstanding tokens are retired first, for a sharper reason than in `issueVerification`:
+ * each live token is a working credential for the account, so pressing the button twice
+ * must replace the first link rather than leave two valid ones in an inbox.
+ */
+async function issuePasswordReset(db: Database, user: UserRow): Promise<void> {
+  const token = generateVerificationToken();
+  const timestamp = Date.now();
+
+  await db
+    .update(passwordResets)
+    .set({ consumedAt: timestamp })
+    .where(and(eq(passwordResets.userId, user.id), isNull(passwordResets.consumedAt)));
+
+  await db.insert(passwordResets).values({
+    id: newId(),
+    userId: user.id,
+    email: user.email,
+    tokenHash: hashVerificationToken(token),
+    createdAt: timestamp,
+    expiresAt: timestamp + env.PASSWORD_RESET_TTL_SECONDS * 1000,
+  });
+
+  await sendPasswordResetEmail({
+    to: user.email,
+    name: user.displayName || user.username,
+    link: passwordResetLink(token),
+  });
+}
+
+/** True when a reset link was sent within the cooldown window. */
+async function resetSentRecently(db: Database, userId: string): Promise<boolean> {
+  const [latest] = await db
+    .select({ createdAt: passwordResets.createdAt })
+    .from(passwordResets)
+    .where(eq(passwordResets.userId, userId))
+    .orderBy(desc(passwordResets.createdAt))
+    .limit(1);
+
+  return latest !== undefined && Date.now() - latest.createdAt < RESEND_COOLDOWN_MS;
 }
 
 /** True when the account was sent a link within the cooldown window. */
@@ -619,6 +678,9 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
         .update(users)
         .set({
           passwordHash: await hashPassword(parsed.data.newPassword),
+          // Invalidates access tokens already held by the other devices, which revoking
+          // their sessions alone would not do for another fifteen minutes.
+          passwordChangedAt: Date.now(),
           updatedAt: Date.now(),
         })
         .where(eq(users.id, user.id));
@@ -780,6 +842,159 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
       }
 
       return reply.send(uniform);
+    },
+  );
+
+  /* -------------------------------------------------------------------- */
+  /* Password reset                                                        */
+  /* -------------------------------------------------------------------- */
+
+  /**
+   * Ask for a reset link.
+   *
+   * Answers identically for an address with an account and one without. That uniformity
+   * is the whole security posture of this endpoint: it is unauthenticated and takes an
+   * email, so any difference in reply -- wording, status, or noticeably faster timing --
+   * turns it into a way to test whether someone has an account here.
+   *
+   * A failure to send is therefore *not* reported, which is the opposite of the choice
+   * made for "resend verification". There, the address is already known to exist because
+   * the user just registered it, so admitting the failure tells the user nothing they did
+   * not know. Here it would.
+   */
+  app.post(
+    '/forgot-password',
+    /*
+     * Tighter than the resend endpoint. Each honoured request sends mail to an address
+     * chosen by whoever called it, so this is the one route where the rate limit is what
+     * stops the server being used to post unwanted mail at a third party.
+     */
+    { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } },
+    async (request, reply) => {
+      const parsed = forgotPasswordSchema.safeParse(request.body);
+      if (!parsed.success) throw fromZodError(parsed.error);
+
+      const uniform = {
+        ok: true,
+        message: 'If an account uses that address, a reset link is on its way.',
+      };
+
+      /*
+       * Without a transport there is nothing to send and no link to click, so saying
+       * "check your inbox" would leave someone waiting on mail that cannot arrive. The
+       * console driver still prints the link, which is what makes this testable locally.
+       */
+      if (!emailCanDeliver() && env.isProduction) return reply.send(uniform);
+
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.email, parsed.data.email), isNull(users.deletedAt)))
+        .limit(1);
+
+      if (!user) return reply.send(uniform);
+      if (await resetSentRecently(db, user.id)) return reply.send(uniform);
+
+      try {
+        await issuePasswordReset(db, user);
+      } catch (error) {
+        // Logged, never surfaced: see the note above on why this reply cannot vary.
+        request.log.error({ err: error, userId: user.id }, 'could not send password reset email');
+      }
+
+      return reply.send(uniform);
+    },
+  );
+
+  /**
+   * Complete a reset.
+   *
+   * The token replaces the current password as proof, so everything that makes it safe
+   * lives in how the row is checked: unexpired, unconsumed, and still matching the
+   * address it was sent to. It is marked consumed in the same step that changes the
+   * password, so a link cannot be replayed out of a mail archive.
+   */
+  app.post(
+    '/reset-password',
+    { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } },
+    async (request, reply) => {
+      const parsed = resetPasswordSchema.safeParse(request.body);
+      if (!parsed.success) throw fromZodError(parsed.error);
+
+      const now = Date.now();
+
+      const [record] = await db
+        .select()
+        .from(passwordResets)
+        .where(eq(passwordResets.tokenHash, hashVerificationToken(parsed.data.token)))
+        .limit(1);
+
+      /*
+       * One message for every way a token can be unusable -- unknown, expired, already
+       * used. They are the same situation from the user's side ("this link no longer
+       * works, ask for another"), and distinguishing them would confirm to someone
+       * holding a stolen token which of those it is.
+       */
+      const invalid = () =>
+        new ApiError(
+          400,
+          'INVALID_TOKEN',
+          'This reset link is no longer valid. Ask for a new one.',
+        );
+
+      if (!record || record.consumedAt !== null || record.expiresAt < now) throw invalid();
+
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.id, record.userId), isNull(users.deletedAt)))
+        .limit(1);
+
+      // The address must still be the one the link was sent to. Otherwise a token sitting
+      // in an old inbox would keep working after the account moved away from it.
+      if (!user || user.email !== record.email) throw invalid();
+
+      await db
+        .update(passwordResets)
+        .set({ consumedAt: now })
+        .where(eq(passwordResets.id, record.id));
+
+      await db
+        .update(users)
+        .set({
+          passwordHash: await hashPassword(parsed.data.newPassword),
+          passwordChangedAt: now,
+          /*
+           * Reaching the link proves the address works, so an account that was still
+           * unverified becomes verified here. Requiring a second round of mail to prove
+           * the same mailbox twice would strand people who reset before confirming.
+           */
+          emailVerifiedAt: user.emailVerifiedAt ?? now,
+          updatedAt: now,
+        })
+        .where(eq(users.id, user.id));
+
+      /*
+       * Every session, with no survivor -- unlike a password change made from inside the
+       * app. Someone resetting has usually lost control of the password, and possibly of
+       * a signed-in device; the request that gets here is an anonymous form post, not a
+       * session worth preserving.
+       */
+      await db
+        .update(sessions)
+        .set({ revokedAt: now })
+        .where(and(eq(sessions.userId, user.id), isNull(sessions.revokedAt)));
+
+      // Retire any other outstanding links, so a second email cannot undo this one.
+      await db
+        .update(passwordResets)
+        .set({ consumedAt: now })
+        .where(and(eq(passwordResets.userId, user.id), isNull(passwordResets.consumedAt)));
+
+      return reply.send({
+        ok: true,
+        message: 'Your password has been changed. Sign in with it.',
+      });
     },
   );
 

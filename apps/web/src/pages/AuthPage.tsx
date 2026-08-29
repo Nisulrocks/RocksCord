@@ -16,6 +16,7 @@ import { ApiClientError } from '../lib/api';
 import type { RegisterResult } from '../hooks/useAuth';
 import { Button, Field, Input } from '../components/ui/primitives';
 import { VerifyEmailNotice } from '../components/auth/VerifyEmailNotice';
+import { AuthShell } from '../components/auth/AuthShell';
 
 interface AuthPageProps {
   mode: 'login' | 'register';
@@ -141,37 +142,16 @@ export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
   };
 
   return (
-    <div className="relative flex h-full items-center justify-center overflow-auto bg-surface-1 px-4 py-10">
-      {/* Ambient gradient wash -- purely decorative, and cheap (no blur filters). */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{
-          background:
-            'radial-gradient(60rem 40rem at 15% -10%, #7c6cff22, transparent 60%),' +
-            'radial-gradient(50rem 36rem at 105% 110%, #3fb6c922, transparent 60%)',
-        }}
-      />
-
-      <div className="relative w-full max-w-[420px]">
-        <div className="mb-7 flex flex-col items-center gap-3 text-center">
-          <RocksCordMark />
-          {/* The verification notice brings its own heading; this one would duplicate it. */}
-          {!pending && (
-            <div>
-              <h1 className="text-[26px] font-semibold tracking-tight text-ink">
-                {isRegister ? 'Create your account' : 'Welcome back'}
-              </h1>
-              <p className="mt-1 text-sm text-ink-dim">
-                {isRegister
-                  ? 'Pick a name. You can change how it looks later.'
-                  : 'Sign in to pick up where you left off.'}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {pending ? (
+    /* The verification notice brings its own heading, so the shell's is omitted there. */
+    <AuthShell
+      title={pending ? undefined : isRegister ? 'Create your account' : 'Welcome back'}
+      subtitle={
+        isRegister
+          ? 'Pick a name. You can change how it looks later.'
+          : 'Sign in to pick up where you left off.'
+      }
+    >
+      {pending ? (
           <VerifyEmailNotice
             email={pending.email}
             fromLogin={pending.fromLogin}
@@ -261,6 +241,20 @@ export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
                       invalid={Boolean(errors.password)}
                     />
                   </Field>
+
+                  {/*
+                    * Under the password box rather than beside the label: it is only ever
+                    * wanted after typing one that did not work, so it belongs where the
+                    * eye already is at that moment.
+                    */}
+                  <div className="-mt-1 text-right">
+                    <Link
+                      to="/forgot-password"
+                      className="text-[12.5px] text-ink-dim hover:text-accent-soft hover:underline"
+                    >
+                      Forgot your password?
+                    </Link>
+                  </div>
                 </>
               )}
             </div>
@@ -292,25 +286,7 @@ export function AuthPage({ mode, onLogin, onRegister }: AuthPageProps) {
             with <code className="rounded bg-surface-3 px-1.5 py-0.5 text-ink-dim">password123</code>
           </p>
           </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** The RocksCord wordmark: the app icon beside the product name. */
-function RocksCordMark() {
-  return (
-    <div className="flex items-center gap-3">
-      <img
-        src="/icon-192.png"
-        alt=""
-        width={48}
-        height={48}
-        // Explicit dimensions stop the heading shifting once the image decodes.
-        className="h-12 w-12 shrink-0"
-      />
-      <span className="text-2xl font-semibold tracking-tight text-ink">RocksCord</span>
-    </div>
+      )}
+    </AuthShell>
   );
 }

@@ -64,6 +64,27 @@ export const resendVerificationSchema = z.object({
 });
 
 /**
+ * Asking for a reset link.
+ *
+ * Only an address, deliberately: a username would let someone confirm which handles
+ * exist, and the reply to this route is the same whether or not an account was found.
+ */
+export const forgotPasswordSchema = z.object({
+  email: emailSchema,
+});
+
+/**
+ * Completing a reset.
+ *
+ * The token stands in for the current password -- possession of the mailbox is the proof
+ * -- so the same strength rules apply to the new one as at registration.
+ */
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'This reset link is missing its token').max(512),
+  newPassword: passwordSchema,
+});
+
+/**
  * Deleting an account re-authenticates rather than trusting the session.
  *
  * It is the one action with no undo, so an unattended laptop should not be enough.

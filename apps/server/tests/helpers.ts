@@ -93,7 +93,7 @@ export function createMemoryEmail(): EmailDriver & {
     },
     lastToken() {
       const token = new URL(this.lastLink()).searchParams.get('token');
-      if (!token) throw new Error('verification link carried no token');
+      if (!token) throw new Error('the link carried no token');
       return token;
     },
   };
@@ -109,6 +109,15 @@ interface BuildOptions {
   realStorage?: boolean;
   /** Install a capturing email driver and require verification. */
   email?: boolean;
+  /**
+   * Install the capturing driver *without* requiring verification.
+   *
+   * Password reset needs this combination and `{ email: true }` cannot express it: a
+   * deployment can send mail while still letting unconfirmed accounts sign in, and reset
+   * has to work there too. It also keeps `registerUser` usable, which the verification
+   * harness deliberately refuses.
+   */
+  mail?: boolean;
 }
 
 async function build(listen: boolean, options: BuildOptions = {}): Promise<TestApp> {
@@ -124,7 +133,7 @@ async function build(listen: boolean, options: BuildOptions = {}): Promise<TestA
   mkdirSync(uploadDir, { recursive: true });
   process.env.UPLOAD_DIR = uploadDir;
 
-  const mail = options.email ? createMemoryEmail() : null;
+  const mail = options.email || options.mail ? createMemoryEmail() : null;
   setEmailDriver(mail);
   // Enforcement is explicit, so the harness has to ask for it as well as for a transport.
   env.REQUIRE_EMAIL_VERIFICATION = Boolean(options.email);
