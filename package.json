@@ -11,6 +11,7 @@
     "node": ">=20.11.0"
   },
   "scripts": {
+    "prepare": "npm run build -w @rockscord/shared",
     "setup": "node scripts/setup.mjs",
     "dev": "concurrently -k -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "npm run dev -w @rockscord/server",
