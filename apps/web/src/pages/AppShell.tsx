@@ -163,7 +163,14 @@ export function AppShell({ onLogout }: { onLogout: () => Promise<void> }) {
       {/* Channel / DM sidebar. */}
       <aside
         className={clsx(
-          'w-full shrink-0 flex-col border-r border-line bg-surface-1 md:w-60',
+          /*
+           * `flex-1`, not `w-full`. On mobile this pane shares the screen with the server
+           * rail, so a full-width sidebar plus a 72px rail is 72px wider than the phone --
+           * and `shrink-0` forbade it from adapting. The overflow pushed the last two
+           * buttons of the user panel, Settings and Sign out, off the right edge with no
+           * way to scroll to them. Taking the remaining space is what it always meant.
+           */
+          'min-w-0 flex-1 flex-col border-r border-line bg-surface-1 md:w-60 md:flex-none',
           mobilePane === 'sidebar' ? 'flex' : 'hidden md:flex',
         )}
       >
@@ -196,7 +203,9 @@ export function AppShell({ onLogout }: { onLogout: () => Promise<void> }) {
       {activeServerId && memberListOpen && !isVoiceChannel && (
         <aside
           className={clsx(
-            'w-full shrink-0 border-l border-line bg-surface-1 md:w-60',
+            // Same reasoning as the sidebar. This pane happens to be the only one visible
+            // on mobile today, so `w-full` fits by luck rather than by construction.
+            'min-w-0 flex-1 border-l border-line bg-surface-1 md:w-60 md:flex-none',
             mobilePane === 'members' ? 'block' : 'hidden md:block',
           )}
         >
