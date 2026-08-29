@@ -28,7 +28,11 @@ import {
   shell,
 } from 'electron';
 import { getLogPath, installCrashHandlers, log, setLogFile, startLog } from './log.js';
-import { checkForUpdatesInteractive, initAutoUpdate } from './updater.js';
+import {
+  checkForUpdatesInteractive,
+  runStartupUpdate,
+  startBackgroundUpdateChecks,
+} from './updater.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -243,13 +247,18 @@ function openSplash(): void {
   log.info('splash shown');
 }
 
-/** Update the line of text under the progress bar. Safe to call at any time. */
-function setSplashStatus(text: string, patient = false): void {
+/**
+ * Update the line of text under the progress bar, and optionally the bar itself.
+ *
+ * Passing a percentage switches the bar from its indeterminate sweep to a real
+ * measurement, which is only honest while a download is reporting bytes.
+ */
+function setSplashStatus(text: string, patient = false, percent?: number): void {
   if (!splashWindow || splashWindow.isDestroyed()) return;
   // JSON.stringify does the escaping; every caller passes a literal anyway.
   const script = `window.__rockscordStatus && window.__rockscordStatus(${JSON.stringify(
     text,
-  )}, ${JSON.stringify(patient)})`;
+  )}, ${JSON.stringify(patient)}, ${JSON.stringify(percent ?? null)})`;
   splashWindow.webContents.executeJavaScript(script).catch(() => {
     // The window can be torn down mid-call; there is nothing useful to do about it.
   });
@@ -716,6 +725,30 @@ if (!gotLock) {
       return;
     }
 
+    /*
+     * Update before anything else.
+     *
+     * Launch is the one moment an update costs nothing: no conversation is open and
+     * nothing is lost. Running it here means the download reports into the splash the
+     * user is already watching and the install is silent -- rather than interrupting a
+     * session with a dialog and then showing them a setup wizard.
+     *
+     * Before the server is contacted, too: if this ends in a restart then waking a
+     * sleeping free-tier host first would have been fifty seconds spent on a connection
+     * that is about to be thrown away.
+     *
+     * A `true` return means the app is quitting to reinstall itself, so nothing more
+     * should start -- a window created now would flash open moments before exit.
+     */
+    if (
+      await runStartupUpdate({
+        onStatus: (text, percent) => setSplashStatus(text, false, percent),
+      })
+    ) {
+      log.info('restarting to install an update');
+      return;
+    }
+
     let targetUrl: string;
 
     try {
@@ -791,8 +824,8 @@ if (!gotLock) {
     mainWindow = createWindow(targetUrl);
     log.info('window created');
 
-    // Starts its own delayed timer, so this does not compete with startup.
-    initAutoUpdate({ getWindow: () => mainWindow });
+    // For sessions left open for days; anything found is applied silently on quit.
+    startBackgroundUpdateChecks();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {

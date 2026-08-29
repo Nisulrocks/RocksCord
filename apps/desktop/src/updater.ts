@@ -3,74 +3,63 @@
  *
  * Most of the app already updates itself: the window loads the web client from the server,
  * so UI and API changes arrive on the next launch. This covers the part that cannot — the
- * main process, the splash, the window behaviour, the installer — which is baked into the
- * executable and otherwise needs a hand-delivered file.
+ * main process, the splash, the window behaviour, the installer — which is compiled into
+ * the executable.
  *
- * Three conditions have to hold before it does anything, and each of them fails silently
- * rather than nagging:
+ * **Updates are applied during startup, behind the splash.** The alternative, and what
+ * this replaced, was a dialog interrupting the session and then the NSIS installer's own
+ * progress window on restart: two pieces of Windows chrome for something the user did not
+ * ask about and cannot meaningfully decide. Launch is the one moment an update costs
+ * nothing — nothing is open, nothing is lost — so the check happens there, the download
+ * reports into the splash the user is already looking at, and the install runs silently.
  *
- *  - **Packaged.** In development there is no update feed, and `electron-updater` throws
- *    rather than shrugging.
+ * Three conditions gate it, each failing quietly rather than nagging:
+ *
+ *  - **Packaged.** In development there is no feed, and electron-updater throws.
  *  - **Installed, not portable.** A portable build runs from a temporary extraction that
- *    is thrown away on exit; there is nothing to write an update into. Checking anyway
- *    would produce an error the user can do nothing about.
+ *    is discarded on exit; there is nowhere to install into.
  *  - **A configured feed.** `app-update.yml` is written at build time only when a publish
- *    target exists, so a locally built exe simply never checks.
- *
- * The download is silent and the install waits: interrupting someone mid-conversation to
- * announce a patch release is worse than the patch is good. It applies on next quit
- * unless they choose to restart now.
+ *    target exists, so a locally built exe never checks.
  */
 
-import { app, BrowserWindow, dialog, Notification } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 import { autoUpdater, type UpdateInfo } from 'electron-updater';
 import { log } from './log.js';
 
-/** Re-checked on this interval, so a long-running window still finds updates. */
-const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/**
+ * How long to wait for the *check* before giving up and launching.
+ *
+ * Only the question "is there an update" is bounded. Once one is being downloaded the
+ * wait is open-ended, because by then the splash is showing real progress and abandoning
+ * it halfway would waste the bytes already fetched.
+ */
+const CHECK_TIMEOUT_MS = 8_000;
 
-/** How long after launch to look, so the check never competes with startup. */
-const FIRST_CHECK_DELAY_MS = 30_000;
+/** Re-checked on this interval, for sessions left running for days. */
+const BACKGROUND_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-let started = false;
 let downloaded: UpdateInfo | null = null;
-let promptOpen = false;
 
 /**
  * A portable build extracts itself to a temporary directory on every run.
- *
- * electron-builder sets this variable for the portable target specifically, which is the
- * only reliable way to tell the two apart from inside the app.
+ * electron-builder sets this variable for that target specifically, which is the only
+ * reliable way to tell the two apart from inside the app.
  */
 function isPortable(): boolean {
   return Boolean(process.env.PORTABLE_EXECUTABLE_DIR);
 }
 
-export interface UpdaterOptions {
-  /** Used to parent the restart dialog, so it cannot end up behind the app. */
-  getWindow: () => BrowserWindow | null;
+function updatable(): boolean {
+  return app.isPackaged && !isPortable();
 }
 
-export function initAutoUpdate({ getWindow }: UpdaterOptions): void {
-  if (started) return;
-
-  if (!app.isPackaged) {
-    log.info('auto-update: skipped (not packaged)');
-    return;
-  }
-  if (isPortable()) {
-    log.info('auto-update: skipped (portable build has nowhere to install to)');
-    return;
-  }
-
-  started = true;
-
-  /*
-   * Download without asking, install without forcing. Asking permission to *download*
-   * is a question people cannot answer usefully -- they do not know what is in it -- and
-   * it means the update is not ready at the moment they would have accepted it.
-   */
+function configureUpdater(): void {
   autoUpdater.autoDownload = true;
+  /*
+   * A silent install is the whole point. `quitAndInstall(false, …)` shows the NSIS
+   * installer's progress window -- the same setup wizard used for a first install -- which
+   * is alarming for something that should look like the app simply restarting.
+   */
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.logger = {
     info: (message: unknown) => log.info(`auto-update: ${String(message)}`),
@@ -78,92 +67,138 @@ export function initAutoUpdate({ getWindow }: UpdaterOptions): void {
     error: (message: unknown) => log.error(`auto-update: ${String(message)}`),
     debug: () => {},
   };
+}
 
-  autoUpdater.on('update-available', (info: UpdateInfo) => {
-    log.info(`auto-update: ${info.version} available, downloading`);
-  });
+/** Silent install, then relaunch. The user sees the app restart, and nothing else. */
+function installNow(): void {
+  autoUpdater.quitAndInstall(true, true);
+}
 
-  autoUpdater.on('update-not-available', () => {
-    log.info('auto-update: already current');
-  });
+export interface StartupUpdateOptions {
+  /** Reports into the splash the user is already watching. */
+  onStatus: (text: string, percent?: number) => void;
+}
 
-  autoUpdater.on('download-progress', (progress: { percent: number }) => {
-    // Logged only at coarse steps; per-chunk logging would flood the file.
-    if (Math.round(progress.percent) % 25 === 0) {
-      log.info(`auto-update: ${Math.round(progress.percent)}%`);
+/**
+ * Check for, download, and apply an update before the main window opens.
+ *
+ * Resolves `true` when the app is about to quit and reinstall itself, in which case the
+ * caller must stop what it is doing: the window should never be created, or it would
+ * flash open moments before the process exits.
+ */
+export async function runStartupUpdate({ onStatus }: StartupUpdateOptions): Promise<boolean> {
+  if (!updatable()) {
+    log.info(
+      `auto-update: skipped (${app.isPackaged ? 'portable build' : 'not packaged'})`,
+    );
+    return false;
+  }
+
+  configureUpdater();
+
+  try {
+    onStatus('Checking for updates…');
+
+    /*
+     * Race the check against a deadline. A slow or unreachable feed must not hold the app
+     * shut -- an update is worth a few seconds at launch, never a hung startup.
+     */
+    const result = await Promise.race([
+      autoUpdater.checkForUpdates(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), CHECK_TIMEOUT_MS)),
+    ]);
+
+    if (!result?.updateInfo || result.updateInfo.version === app.getVersion()) {
+      log.info('auto-update: already current');
+      return false;
     }
-  });
+
+    const version = result.updateInfo.version;
+
+    // `autoDownload` means the fetch is already under way; this is the handle to it.
+    if (!result.downloadPromise) {
+      log.info(`auto-update: ${version} found but no download started`);
+      return false;
+    }
+
+    log.info(`auto-update: downloading ${version}`);
+    onStatus(`Downloading update — ${version}`);
+
+    const onProgress = (progress: { percent: number }) => {
+      const percent = Math.round(progress.percent);
+      onStatus(`Downloading update — ${percent}%`, percent);
+    };
+    autoUpdater.on('download-progress', onProgress);
+
+    try {
+      await result.downloadPromise;
+    } finally {
+      autoUpdater.off('download-progress', onProgress);
+    }
+
+    log.info(`auto-update: installing ${version}`);
+    onStatus('Installing update…');
+
+    /*
+     * A beat before quitting, so the final message actually paints. Without it the app
+     * exits mid-frame and the splash appears to freeze on the download percentage.
+     */
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    installNow();
+    return true;
+  } catch (error) {
+    /*
+     * Never surfaced. A failed update is not something the user did or can fix, the app
+     * works perfectly on the version it has, and the next launch will try again. The log
+     * is for whoever ships the build.
+     */
+    log.error(`auto-update: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
+}
+
+/**
+ * Keep checking while the app is open.
+ *
+ * Anything found here is downloaded quietly and left for `autoInstallOnAppQuit`, so a
+ * session that has been running for days still picks up a release without ever being
+ * interrupted by it.
+ */
+export function startBackgroundUpdateChecks(): void {
+  if (!updatable()) return;
 
   autoUpdater.on('update-downloaded', (info: UpdateInfo) => {
     downloaded = info;
     log.info(`auto-update: ${info.version} ready, will install on quit`);
-    void offerRestart(info);
   });
 
   autoUpdater.on('error', (error: Error) => {
-    /*
-     * Never surfaced to the user. An update failing is not something they did or can fix,
-     * the app keeps working on the version it has, and the next check may well succeed --
-     * a dialog here would be pure noise. The log is for whoever ships the build.
-     */
     log.error(`auto-update: ${error.message}`);
   });
 
-  setTimeout(() => void check(), FIRST_CHECK_DELAY_MS);
-  setInterval(() => void check(), CHECK_INTERVAL_MS);
-
-  async function offerRestart(info: UpdateInfo): Promise<void> {
-    if (promptOpen) return;
-    promptOpen = true;
-
-    const window = getWindow();
-    const options = {
-      type: 'info' as const,
-      title: 'Update ready',
-      message: `RocksCord ${info.version} is ready to install.`,
-      detail: 'It will be applied the next time you quit, or you can restart now.',
-      buttons: ['Restart now', 'Later'],
-      defaultId: 1, // "Later": never make Enter restart someone mid-sentence.
-      cancelId: 1,
-    };
-
-    const result = window
-      ? await dialog.showMessageBox(window, options)
-      : await dialog.showMessageBox(options);
-
-    promptOpen = false;
-    if (result.response === 0) {
-      // `isSilent: false` shows the installer's own progress; `isForceRunAfter` reopens
-      // the app afterwards so restarting actually feels like restarting.
-      autoUpdater.quitAndInstall(false, true);
-    } else if (Notification.isSupported()) {
-      new Notification({
-        title: 'Update scheduled',
-        body: `RocksCord ${info.version} will install when you next close the app.`,
-      }).show();
-    }
-  }
-}
-
-async function check(): Promise<void> {
-  try {
-    await autoUpdater.checkForUpdates();
-  } catch (error) {
-    log.error(`auto-update: check failed: ${error instanceof Error ? error.message : error}`);
-  }
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch((error: unknown) => {
+      log.error(
+        `auto-update: background check failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+  }, BACKGROUND_INTERVAL_MS);
 }
 
 /**
  * A manual check, from the menu.
  *
- * Unlike the background one this always answers, because the person asked. Silence in
+ * Unlike the automatic paths this always answers, because the person asked. Silence in
  * response to a deliberate "check for updates" reads as broken.
  */
 export async function checkForUpdatesInteractive(window: BrowserWindow | null): Promise<void> {
   const show = (options: Electron.MessageBoxOptions) =>
     window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
 
-  if (!app.isPackaged || isPortable()) {
+  if (!updatable()) {
     await show({
       type: 'info',
       title: 'Updates',
@@ -171,7 +206,7 @@ export async function checkForUpdatesInteractive(window: BrowserWindow | null): 
         ? 'This is the portable build, which cannot update itself.'
         : 'Updates are only available in the installed app.',
       detail: isPortable()
-        ? 'Download the installer to get automatic updates, or replace the file by hand.'
+        ? 'Install RocksCord to get automatic updates, or replace the file by hand.'
         : 'This is a development build.',
       buttons: ['OK'],
     });
@@ -182,20 +217,19 @@ export async function checkForUpdatesInteractive(window: BrowserWindow | null): 
     const result = await show({
       type: 'info',
       title: 'Update ready',
-      message: `RocksCord ${downloaded.version} is downloaded.`,
-      detail: 'Restart to apply it.',
+      message: `RocksCord ${downloaded.version} is ready.`,
+      detail: 'It installs automatically when you quit, or you can restart now.',
       buttons: ['Restart now', 'Later'],
       defaultId: 1,
       cancelId: 1,
     });
-    if (result.response === 0) autoUpdater.quitAndInstall(false, true);
+    if (result.response === 0) installNow();
     return;
   }
 
   try {
     const result = await autoUpdater.checkForUpdates();
-    const available =
-      result?.updateInfo && result.updateInfo.version !== app.getVersion();
+    const available = result?.updateInfo && result.updateInfo.version !== app.getVersion();
 
     await show({
       type: 'info',
@@ -203,7 +237,7 @@ export async function checkForUpdatesInteractive(window: BrowserWindow | null): 
       message: available
         ? `RocksCord ${result!.updateInfo.version} is downloading.`
         : `RocksCord ${app.getVersion()} is up to date.`,
-      detail: available ? 'You will be told when it is ready to install.' : '',
+      detail: available ? 'It will install the next time you quit.' : '',
       buttons: ['OK'],
     });
   } catch (error) {

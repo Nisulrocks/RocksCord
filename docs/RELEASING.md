@@ -71,19 +71,31 @@ iterating.
 
 ## What your friends experience
 
-- The app checks 30 seconds after launch, then every 6 hours.
-- An update downloads **in the background**, with no prompt. Asking permission to download
-  is a question nobody can answer usefully, and it means the update is not ready at the
-  moment they would have said yes.
-- When it is ready they get one dialog: **Restart now** or **Later**. "Later" is the
-  default button, so a stray Enter never restarts someone mid-sentence.
-- Either way it installs when they next quit.
-- **Help → Check for updates…** forces a check, and always answers — silence in response to
-  a deliberate check reads as broken.
+Nothing, ideally. The app updates itself during startup, behind the splash:
+
+```
+Checking for updates…
+Downloading update — 47%     <- the bar switches to a real measurement
+Installing update…
+```
+
+Then it restarts into the new version. No dialog, no setup wizard, no decision to make.
+
+This happens **before** the server is contacted, so an update never waits on a sleeping
+free-tier host, and a restart never throws away a connection it just spent fifty seconds
+establishing.
+
+The check is bounded at eight seconds. Downloads are not — by then the splash is showing
+real progress, and abandoning one halfway would waste the bytes already fetched.
+
+A session left open for days still picks up releases: they download quietly in the
+background and install on quit, without interrupting anything.
 
 Failures are logged and never shown. An update that cannot download is not something the
-user did or can fix, the app keeps working on the version it has, and the next check may
-succeed.
+user did or can fix, and the app works perfectly on the version it has.
+
+**Help → Check for updates…** forces a check and always answers, because there the person
+asked.
 
 ---
 

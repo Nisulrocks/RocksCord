@@ -358,10 +358,12 @@ Needs a published release; see [RELEASING.md](RELEASING.md).
 
 - [ ] Install an older version, then publish a higher one
 - [ ] Within about 30 seconds of launch the log shows `auto-update: Checking for update`
-- [ ] It downloads without prompting, then offers **Restart now / Later**
-- [ ] **Later** is the default button, so Enter does not restart you
-- [ ] Choosing Later and quitting normally installs the update
-- [ ] Reopening shows the new version in **Help → About RocksCord**
+- [ ] The splash shows **Checking for updates…**, then **Downloading update — NN%** with
+      the bar filling as a real measurement rather than sweeping
+- [ ] Then **Installing update…**, and the app restarts on its own
+- [ ] **No dialog appears, and the NSIS setup window never shows**
+- [ ] After restarting, **Help → About RocksCord** shows the new version
+- [ ] The main window never flashes open before the restart
 - [ ] **Help → Check for updates…** on the newest version says you are up to date
 - [ ] With no network, the check fails silently — no dialog, and the app still works
 - [ ] On the **portable** exe, Check for updates says it cannot self-update

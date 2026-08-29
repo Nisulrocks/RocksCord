@@ -120,9 +120,12 @@
       }
 
       /*
-       * Indeterminate rather than a percentage. The two things being waited on -- a
-       * server waking and a page painting -- report no progress at all, so a filling bar
-       * would be a lie about information we do not have.
+       * Indeterminate by default. The two things usually being waited on -- a server
+       * waking and a page painting -- report no progress at all, so a filling bar would
+       * be a lie about information we do not have.
+       *
+       * A download is the exception: it reports real bytes, so the bar switches to a
+       * measured fill and the animation stops.
        */
       .track span {
         display: block;
@@ -131,6 +134,13 @@
         border-radius: 2px;
         background: linear-gradient(90deg, var(--accent), var(--accent-soft));
         animation: slide 1.35s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+      }
+
+      .track.measured span {
+        animation: none;
+        transform: none;
+        /* Eased so a jump between progress events glides rather than snaps. */
+        transition: width 0.25s ease-out;
       }
 
       @keyframes slide {
@@ -178,7 +188,7 @@
         <span class="wordmark">RocksCord</span>
       </div>
 
-      <div class="track"><span></span></div>
+      <div class="track" id="track"><span id="bar"></span></div>
 
       <p class="status" id="status">Starting&hellip;</p>
     </div>
@@ -191,11 +201,26 @@
        * opening an IPC channel purely to write two lines of text. The main process is the
        * only possible caller and every message it sends is a fixed string.
        */
-      window.__rockscordStatus = function (text, patient) {
+      window.__rockscordStatus = function (text, patient, percent) {
         var el = document.getElementById('status');
-        if (!el) return;
-        el.textContent = text;
-        el.classList.toggle('patient', Boolean(patient));
+        if (el) {
+          el.textContent = text;
+          el.classList.toggle('patient', Boolean(patient));
+        }
+
+        var track = document.getElementById('track');
+        var bar = document.getElementById('bar');
+        if (!track || !bar) return;
+
+        // A number switches the bar to a real measurement; anything else returns it to
+        // the indeterminate sweep.
+        if (typeof percent === 'number' && isFinite(percent)) {
+          track.classList.add('measured');
+          bar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+        } else {
+          track.classList.remove('measured');
+          bar.style.width = '';
+        }
       };
     </script>
   </body>
