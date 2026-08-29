@@ -35,8 +35,8 @@ verification.
 **Quality of life** — `Ctrl`+`K` quick switcher, `Ctrl`+`/` shortcut sheet, mark a whole
 server read, notification sounds, and light/dark/system themes.
 
-**Apps** — a web client and a Windows desktop app that embeds the server, with a splash
-screen and automatic updates.
+**Apps** — a web client, a Windows desktop app that embeds the server, with a splash
+screen and automatic updates, and an Android APK.
 
 ---
 
@@ -73,6 +73,7 @@ Demo accounts, password `password123`:
 | `npm test` | Server test suite |
 | `npm run typecheck` | Typecheck all workspaces |
 | `npm run build:exe` | Build the Windows installer and portable exe |
+| `npm run build:apk` | Build the Android APK (needs the Android SDK and JDK 21) |
 | `npm run db:seed` | Seed demo data |
 | `npm run db:reset` | Drop and recreate the database |
 | `npm run icons` | Regenerate icons and installer art from one source PNG |
@@ -88,6 +89,7 @@ apps/
   server/        Fastify API, Socket.IO gateway, Drizzle schema and migrations
   web/           React client
   desktop/       Electron shell
+  mobile/        Capacitor Android shell
 packages/
   shared/        Types, zod schemas, permission bitfield — used by both sides
 scripts/         setup, build, icon, and diagnostic scripts
@@ -201,6 +203,8 @@ Not production-hardened: no 2FA or CAPTCHA.
   it, the same model image CDNs use.
 - Message history is not virtualised.
 - The portable exe cannot self-update.
+- The Android app is a WebView on your deployment: it needs a connection, and gets no push
+  notifications while closed.
 - The executable is unsigned, so SmartScreen warns on first run.
 - Email verification is off by default; see [docs/EMAIL.md](docs/EMAIL.md).
 - Password reset needs a configured email provider; without one there is no way back into
@@ -217,6 +221,7 @@ Not production-hardened: no 2FA or CAPTCHA.
 | [SHARING.md](docs/SHARING.md) | Getting the app to your friends |
 | [TESTING.md](docs/TESTING.md) | Automated tests and a manual checklist |
 | [RELEASING.md](docs/RELEASING.md) | Cutting a desktop release |
+| [ANDROID.md](docs/ANDROID.md) | Installing and building the Android app |
 | [EMAIL.md](docs/EMAIL.md) | Email provider setup, password reset, and verification |
 
 ---

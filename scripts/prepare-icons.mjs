@@ -300,6 +300,34 @@ const OUTPUTS = [
   { file: path.join(root, 'apps', 'web', 'public', 'icon-512.png'), size: 512 },
   { file: path.join(root, 'apps', 'web', 'public', 'icon-192.png'), size: 192 },
   { file: path.join(root, 'apps', 'web', 'public', 'favicon-32.png'), size: 32 },
+
+  /*
+   * Android launcher icons, one per density bucket.
+   *
+   * Both names in each bucket are written from the same square source. `ic_launcher_round`
+   * is what launchers that mask icons into circles reach for, and a missing one is not
+   * substituted -- it renders as the default green robot, on the one screen where the app
+   * has to look like itself.
+   *
+   * `-v26` adaptive icons are deliberately left alone: they are vector XML referencing a
+   * foreground and background layer, which this pipeline has no business generating from a
+   * flat PNG.
+   */
+  ...[
+    ['mdpi', 48],
+    ['hdpi', 72],
+    ['xhdpi', 96],
+    ['xxhdpi', 144],
+    ['xxxhdpi', 192],
+  ].flatMap(([density, size]) =>
+    ['ic_launcher.png', 'ic_launcher_round.png', 'ic_launcher_foreground.png'].map((name) => ({
+      file: path.join(
+        root, 'apps', 'mobile', 'android', 'app', 'src', 'main', 'res',
+        `mipmap-${density}`, name,
+      ),
+      size,
+    })),
+  ),
 ];
 
 for (const { file, size } of OUTPUTS) {

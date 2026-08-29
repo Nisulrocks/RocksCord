@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The app's own dark surface, matching `--surface-1` in the web client.
+
+      Used for the launch screen and the WebView's backdrop so the app never flashes
+      white: the page it loads is dark, and a white frame between tapping the icon and
+      the first paint is the most visible thing about a cold start.
+    -->
+    <color name="rockscordBackground">#0C0D14</color>
+    <color name="colorPrimary">#6C5CFF</color>
+    <color name="colorPrimaryDark">#0C0D14</color>
+    <color name="colorAccent">#6C5CFF</color>
+</resources>

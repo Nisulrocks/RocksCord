@@ -1,0 +1,17 @@
+{
+  "name": "@rockscord/mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Android shell for the RocksCord web client",
+  "scripts": {
+    "sync": "node scripts/configure.mjs && cap sync android",
+    "open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  }
+}

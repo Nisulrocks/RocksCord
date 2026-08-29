@@ -18,6 +18,7 @@
     "dev:web": "npm run dev -w @rockscord/web",
     "build": "npm run build -w @rockscord/shared && npm run build -w @rockscord/server && npm run build -w @rockscord/web",
     "build:exe": "node scripts/build-exe.mjs",
+    "build:apk": "node apps/mobile/scripts/configure.mjs && npm run build -w @rockscord/web && cd apps/mobile && npx cap sync android && cd android && ./gradlew assembleDebug",
     "start": "npm run start -w @rockscord/server",
     "db:generate": "npm run db:generate -w @rockscord/server",
     "db:migrate": "npm run db:migrate -w @rockscord/server",

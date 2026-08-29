@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      A dark base theme, because the app is dark.
+
+      Capacitor's default is `Theme.AppCompat.Light.DarkActionBar`, which paints a white
+      window behind the WebView. That white is visible twice: for a moment on every cold
+      start, and behind the page whenever the WebView is mid-navigation or over-scrolled.
+    -->
+    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="android:windowBackground">@color/rockscordBackground</item>
+    </style>
+
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/rockscordBackground</item>
+    </style>
+
+    <!--
+      The launch screen.
+
+      `windowSplashScreenBackground` is the Android 12+ path and `android:background` the
+      older one; both are set because the app supports a range that spans the change, and
+      a device using the path that was left out falls back to white.
+    -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+        <item name="windowSplashScreenBackground">@color/rockscordBackground</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>

@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, MessageSquare, UserPlus, UserX, X } from 'lucide-react';
+import { Check, Menu, MessageSquare, UserPlus, UserX, X } from 'lucide-react';
 import clsx from 'clsx';
 import type { Friendship } from '@rockscord/shared';
 import { api, ApiClientError } from '../../lib/api';
@@ -88,6 +88,19 @@ export function FriendsView() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-1 border-b border-line px-4">
+        {/*
+          * The same escape hatch the chat header has. Without it this screen is a dead end
+          * on a phone: it is where you land after signing in, the rail and channel list are
+          * off-screen at that width, and nothing else here opens them.
+          */}
+        <IconButton
+          label="Show servers"
+          onClick={() => setMobilePane('sidebar')}
+          className="-ml-1 mr-1 md:hidden"
+        >
+          <Menu size={18} />
+        </IconButton>
+
         <div className="flex items-center gap-2 pr-3 text-[15px] font-semibold text-ink">
           <UserPlus size={19} className="text-ink-faint" />
           Friends
