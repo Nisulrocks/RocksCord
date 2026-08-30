@@ -1096,8 +1096,14 @@ if (!gotLock) {
      * Before the update check, which is the moment that matters: if the jar is intact here
      * and empty on the next launch, the update destroyed it; if it is already empty here,
      * it was lost when the previous run ended.
+     *
+     * Read from `config` rather than `targetUrl`, which is not resolved until after the
+     * update check below. Reaching forward to it threw a ReferenceError that surfaced as
+     * the app sitting on "Starting..." forever, since the rejection had nowhere to go.
      */
-    await logCookieState('startup', targetUrl);
+    if (config.mode === 'remote' && config.remoteUrl) {
+      await logCookieState('startup', config.remoteUrl);
+    }
 
     if (
       await runStartupUpdate({

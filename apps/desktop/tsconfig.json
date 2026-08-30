@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Type checking only. The shippable output comes from esbuild, which bundles but does
+    // not check -- which is precisely how an unchecked main process went unnoticed.
+    "noEmit": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    // The preload is authored as ESM and bundled to CommonJS by esbuild, which is
+    // deliberate; verbatim syntax would reject the `.cts` extension it needs to be
+    // loaded as a preload script.
+    "verbatimModuleSyntax": false,
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.cts"],
+  "exclude": ["build", "release", "node_modules"]
+}
