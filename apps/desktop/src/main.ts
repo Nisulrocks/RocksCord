@@ -438,12 +438,38 @@ function createWindow(targetUrl: string): BrowserWindow {
   });
 
   // External links open in the real browser, never inside the app shell.
+  /*
+   * A link to this app opens *in* this app, not in a second copy of it.
+   *
+   * `allow` here creates a brand new BrowserWindow, and a new window is not another view
+   * of the running app: it gets no preload, so the page cannot tell it is in the desktop
+   * app at all, and none of the renderer state comes with it. Clicking an invite you were
+   * sent therefore produced a second RocksCord window asking you to sign in -- while the
+   * first one sat behind it, signed in the whole time.
+   *
+   * Same-origin links are routed into this window instead, which keeps the session and
+   * everything already open. Anything else goes to the real browser, where it belongs.
+   */
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/.test(url) && !url.startsWith(targetUrl)) {
-      void shell.openExternal(url);
+    if (url.startsWith(targetUrl)) {
+      const path = url.slice(targetUrl.length) || '/';
+      const normalised = path.startsWith('/') ? path : `/${path}`;
+
+      /*
+       * Uploads and the API are served by the same origin but are not app routes -- the
+       * client router would answer an attachment link with "page not found". Those are
+       * files, so they go to the browser.
+       */
+      if (normalised.startsWith('/uploads') || normalised.startsWith('/api')) {
+        void shell.openExternal(url);
+      } else {
+        window.webContents.send('rockscord:navigate', normalised);
+      }
       return { action: 'deny' };
     }
-    return { action: 'allow' };
+
+    if (/^https?:/.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   window.webContents.on('will-navigate', (event, url) => {

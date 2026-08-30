@@ -7,9 +7,9 @@
  * making you find the link again.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Users } from 'lucide-react';
+import { Monitor, Users } from 'lucide-react';
 import type { Invite, Server, ServerBundle } from '@rockscord/shared';
 import { api, ApiClientError } from '../lib/api';
 import { isDesktop } from '../lib/desktop';
@@ -25,6 +25,40 @@ export function InvitePage({ signedIn }: { signedIn: boolean }) {
   const navigate = useNavigate();
   // Read once: it cannot change while the page is mounted.
   const [inDesktopApp] = useState(() => isDesktop());
+
+  const openInApp = useCallback(() => {
+    if (!code) return;
+    window.location.href = `rockscord://invite/${encodeURIComponent(code)}`;
+  }, [code]);
+
+  /**
+   * Reach for the installed app before settling for the browser.
+   *
+   * Nothing can ask whether the app is installed, so this is a genuine attempt rather than
+   * a check: if a handler is registered the OS takes over, and if not the navigation is
+   * silently dropped and the page carries on. Either way what is underneath is a working
+   * invite, so nobody is stranded.
+   *
+   * Once per code per tab. Without that guard, coming back to the browser after the app
+   * opens would immediately throw you at the app again -- which is indistinguishable from
+   * the page being broken.
+   */
+  useEffect(() => {
+    if (inDesktopApp || !code) return;
+
+    const key = `rockscord.tried-app.${code}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch {
+      // No sessionStorage: attempting every visit is worse than never, so do nothing.
+      return;
+    }
+
+    // After paint, so the page is already there when the OS prompt appears over it.
+    const timer = window.setTimeout(openInApp, 600);
+    return () => window.clearTimeout(timer);
+  }, [inDesktopApp, code, openInApp]);
   const applyServerBundle = useAppStore((s) => s.applyServerBundle);
 
   const [invite, setInvite] = useState<Invite | null>(null);
@@ -179,26 +213,18 @@ export function InvitePage({ signedIn }: { signedIn: boolean }) {
             {/*
               * The way an invite reaches the installed app.
               *
-              * A shared link is an ordinary https URL, so the OS hands it to the browser
-              * and someone with the desktop app running still joins in a web page. Only
-              * a browser can claim an https domain, so the app registers `rockscord://`
-              * and this is what uses it.
+              * A shared link is an ordinary https URL, so the OS hands it to the browser.
+              * Only a browser can claim an https domain, so the app registers
+              * `rockscord://` and this is what reaches for it.
               *
-              * Hidden inside the app itself, where the page is already where the button
-              * would send it. Nothing detects whether the app is installed -- there is no
-              * reliable way to -- so it stays a suggestion rather than a redirect: on a
-              * machine without it, clicking does nothing and the web page is still there.
+              * Hidden inside the app itself, where the page is already where this would
+              * send it.
               */}
             {!inDesktopApp && code && (
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = `rockscord://invite/${encodeURIComponent(code)}`;
-                }}
-                className="mt-4 text-[12.5px] text-ink-dim underline-offset-2 hover:text-accent-soft hover:underline"
-              >
-                Open in the desktop app instead
-              </button>
+              <Button variant="ghost" block className="mt-3" onClick={openInApp}>
+                <Monitor size={16} aria-hidden />
+                Open in the RocksCord app
+              </Button>
             )}
           </>
         ) : null}
