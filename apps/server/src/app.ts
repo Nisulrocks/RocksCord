@@ -29,6 +29,7 @@ import { runMigrations } from './db/migrate.js';
 import { users } from './db/schema.js';
 import { verifyAccessToken } from './lib/auth.js';
 import { ApiError, errorHandler } from './lib/errors.js';
+import { getStorage } from './lib/storage/index.js';
 import { localUploadRoot } from './lib/storage/local.js';
 import type { AppContext, RequestUser } from './context.js';
 import { attachGateway } from './realtime/gateway.js';
@@ -309,6 +310,17 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
   app.get('/health', async () => ({
     status: 'ok',
     database: (await pingDb(db)) ? 'up' : 'down',
+    /*
+     * Which storage driver is live.
+     *
+     * Worth reporting because the wrong one fails invisibly: `local` on a host with no
+     * persistent disk accepts every upload and serves it back happily, right up until the
+     * next deploy erases the lot. Nothing errors, and the damage only shows as avatars
+     * quietly turning back into initials days later.
+     *
+     * The name alone is not a secret -- it says nothing about the bucket or the keys.
+     */
+    storage: (await getStorage()).name,
     uptimeSeconds: Math.round(process.uptime()),
     version: appVersion(),
   }));
