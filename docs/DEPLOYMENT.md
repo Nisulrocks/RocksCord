@@ -95,6 +95,10 @@ Free tier: 1 GB storage, 5 GB egress/month, no card.
    gear at the bottom of the sidebar):
 
    - **Data API** → **Project URL** → `SUPABASE_URL`
+
+     Take the bare `https://<ref>.supabase.co`, not the REST endpoint shown near it. If
+     `/rest/v1` comes along it is stripped on load, but the two sit close together and
+     only one of them is the project URL.
    - **API Keys** → a key with full server-side access → `SUPABASE_SERVICE_KEY`
 
    Supabase has renamed that key. Older projects call it **`service_role`** and newer ones

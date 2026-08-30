@@ -240,7 +240,24 @@ function buildEnv(): Env {
    * trailing slash is the most ordinary thing in the world, and nothing about the symptom
    * points at it.
    */
-  if (env.SUPABASE_URL) env.SUPABASE_URL = env.SUPABASE_URL.trim().replace(/\/+$/, '');
+  if (env.SUPABASE_URL) {
+    /*
+     * Reduce whatever was pasted to the project's API root.
+     *
+     * Supabase's settings page shows several URLs built on the same host, and the one
+     * beside the keys is the REST endpoint -- `https://<ref>.supabase.co/rest/v1`. Copying
+     * that is the obvious mistake, and the result is baffling: the client appends its own
+     * path, producing `/rest/v1/storage/v1/bucket/...`, and Supabase answers "Invalid path
+     * specified in request URL", which sounds like a problem with the bucket.
+     *
+     * Only Supabase's own service prefixes are stripped, so a genuinely wrong host still
+     * fails loudly rather than being quietly rewritten into something that looks fine.
+     */
+    env.SUPABASE_URL = env.SUPABASE_URL.trim()
+      .replace(/\/+$/, '')
+      .replace(/\/(rest|storage|auth|realtime|functions)\/v\d+$/, '')
+      .replace(/\/+$/, '');
+  }
 
   if (env.EMAIL_DRIVER === 'brevo' && !env.EMAIL_API_KEY) {
     throw new Error('EMAIL_DRIVER=brevo requires EMAIL_API_KEY to be set.');
