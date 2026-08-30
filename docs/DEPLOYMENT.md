@@ -91,14 +91,21 @@ Free tier: 1 GB storage, 5 GB egress/month, no card.
      capability links, the same model image CDNs use, and a private bucket makes every
      one of them a 400.
 
-3. **Project Settings** (the gear, bottom of the sidebar) → **API Keys**, and copy:
-   - the **Project URL** → `SUPABASE_URL`
-   - a key with full server-side access → `SUPABASE_SERVICE_KEY`
+3. The URL and the key live on two different pages, both under **Project Settings** (the
+   gear at the bottom of the sidebar):
+
+   - **Data API** → **Project URL** → `SUPABASE_URL`
+   - **API Keys** → a key with full server-side access → `SUPABASE_SERVICE_KEY`
 
    Supabase has renamed that key. Older projects call it **`service_role`** and newer ones
-   a **secret key** starting `sb_secret_`; both sit on this page, sometimes under a
+   a **secret key** starting `sb_secret_`; both sit on that page, sometimes under a
    *Legacy API keys* tab, and either works. What you must not use is the anon or
    publishable key -- those are meant to be public and cannot write to storage.
+
+   If the console has been rearranged again, the URL is derivable and does not need
+   finding. The dashboard address bar reads
+   `supabase.com/dashboard/project/<ref>`, and the project URL is that ref inside the
+   hostname: `https://<ref>.supabase.co`.
 
 > The service-role key bypasses row-level security. It is used server-side only, after the
 > request has already been authenticated and permission-checked. Never put it in a client.
