@@ -677,17 +677,110 @@ function openAdditionalWindow(targetUrl: string): void {
 /* Lifecycle                                                                   */
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+/* Deep links                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `rockscord://invite/CODE` opens an invite in the app rather than the browser.
+ *
+ * A shared invite is an ordinary `https://` link, and the OS gives those to the default
+ * browser -- so a friend with the app already running still ended up joining in a web
+ * page, which is the "second copy of the app" people were seeing. Claiming the https
+ * domain is not an option outside a browser, so the app registers its own scheme and the
+ * invite page offers a button that uses it.
+ *
+ * Only invites are routed. A handler that navigated anywhere would take an
+ * attacker-supplied string from any web page on the machine and turn it into navigation
+ * inside a signed-in session; the one path worth opening is the one people actually share.
+ */
+const PROTOCOL = 'rockscord';
+
+function registerProtocol(): void {
+  /*
+   * In development the executable is Electron itself, so the entry script has to be part
+   * of the registered command or Windows launches a bare Electron with no app.
+   */
+  if (process.defaultApp) {
+    const entry = process.argv[1];
+    if (entry) {
+      app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(entry)]);
+    }
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
+}
+
+/** Find a `rockscord://` argument among a process's arguments, if any. */
+function deepLinkIn(argv: readonly string[]): string | null {
+  return argv.find((argument) => argument.startsWith(`${PROTOCOL}://`)) ?? null;
+}
+
+/**
+ * Translate a deep link into an in-app path, or null if it is not one we serve.
+ *
+ * `rockscord://invite/abc123` parses with `invite` as the host and `/abc123` as the path,
+ * so both halves are read rather than assuming a shape.
+ */
+function pathForDeepLink(link: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    return null;
+  }
+
+  // Checked rather than assumed. Both callers filter by scheme already, so this only
+  // matters if a third one is added later -- which is exactly when it would be missed.
+  if (url.protocol !== `${PROTOCOL}:`) return null;
+
+  const segments = [url.host, ...url.pathname.split('/')].filter(Boolean);
+  if (segments[0] !== 'invite' || !segments[1]) return null;
+
+  // The code is put back through encoding rather than trusted: it arrives from outside.
+  return `/invite/${encodeURIComponent(decodeURIComponent(segments[1]))}`;
+}
+
+function handleDeepLink(link: string): void {
+  const target = pathForDeepLink(link);
+  if (!target) {
+    log.warn(`ignoring deep link: ${link}`);
+    return;
+  }
+
+  log.info(`deep link: ${target}`);
+  if (!mainWindow) return;
+
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+  mainWindow.webContents.send('rockscord:navigate', target);
+}
+
+registerProtocol();
+
+// macOS delivers deep links as an event rather than in argv, whether or not the app was
+// already running.
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
+
 // One instance only: a second launch focuses the existing window instead of starting a
 // second server on a second port against the same database file.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
+
+    // On Windows and Linux a deep link that arrives while the app is running is delivered
+    // as the second launch's arguments, which is why this is the same event as focusing.
+    const link = deepLinkIn(argv);
+    if (link) handleDeepLink(link);
   });
 
   log.info('waiting for Electron ready');
@@ -823,6 +916,20 @@ if (!gotLock) {
     buildMenu(targetUrl);
     mainWindow = createWindow(targetUrl);
     log.info('window created');
+
+    /*
+     * A deep link that *launched* the app arrives in this process's own arguments, long
+     * before there is a renderer to tell about it. Waiting for the first load means the
+     * invite is delivered to a page that can actually route it, rather than into a window
+     * that is still blank.
+     *
+     * `once` rather than `on`: later loads are ordinary navigation, and replaying the
+     * launch argument on each of them would drag the user back to the invite every time.
+     */
+    const launchLink = deepLinkIn(process.argv);
+    if (launchLink) {
+      mainWindow.webContents.once('did-finish-load', () => handleDeepLink(launchLink));
+    }
 
     // For sessions left open for days; anything found is applied silently on quit.
     startBackgroundUpdateChecks();

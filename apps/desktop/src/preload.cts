@@ -44,4 +44,24 @@ contextBridge.exposeInMainWorld('rockscord', {
    * in side by side. This is the multi-user testing affordance.
    */
   openSecondWindow: (): Promise<void> => ipcRenderer.invoke('rockscord:open-second-window'),
+
+  /**
+   * Route a `rockscord://` deep link, currently only invites.
+   *
+   * The main process resolves the link to an in-app path and sends it here; the page
+   * navigates with its own router so the session and open state survive, which a full
+   * `loadURL` would throw away.
+   *
+   * Returns an unsubscribe function. Without one the renderer would accumulate a listener
+   * on every mount, and a single invite would fire navigation several times.
+   */
+  onNavigate: (handler: (path: string) => void): (() => void) => {
+    const listener = (_event: unknown, path: unknown) => {
+      if (typeof path === 'string') handler(path);
+    };
+    ipcRenderer.on('rockscord:navigate', listener);
+    return () => {
+      ipcRenderer.removeListener('rockscord:navigate', listener);
+    };
+  },
 });

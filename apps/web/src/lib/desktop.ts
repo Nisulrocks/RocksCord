@@ -29,6 +29,7 @@ interface DesktopBridge {
   useServer: (url: string) => Promise<void>;
   useLocal: () => Promise<void>;
   openSecondWindow: () => Promise<void>;
+  onNavigate?: (handler: (path: string) => void) => () => void;
 }
 
 function bridge(): DesktopBridge | null {
@@ -50,5 +51,25 @@ export async function desktopInfo(): Promise<DesktopInfo | null> {
   } catch {
     // An older shell without this handler; treat it as a browser rather than failing.
     return null;
+  }
+}
+
+/**
+ * Subscribe to deep links opened while the app is running.
+ *
+ * Returns an unsubscribe function, and a no-op one in a browser -- so callers can wire
+ * this into an effect without branching on whether they are in the desktop app.
+ *
+ * `onNavigate` is optional because the shell updates independently of the web client: a
+ * copy installed before deep links existed has no such method, and asking for one would
+ * throw on every launch of an older build.
+ */
+export function onDesktopNavigate(handler: (path: string) => void): () => void {
+  const api = bridge();
+  if (!api?.onNavigate) return () => {};
+  try {
+    return api.onNavigate(handler);
+  } catch {
+    return () => {};
   }
 }

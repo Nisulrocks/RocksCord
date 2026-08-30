@@ -4,9 +4,10 @@
  */
 
 import { useEffect } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { useAppStore } from './store/useAppStore';
+import { onDesktopNavigate } from './lib/desktop';
 import { AuthPage } from './pages/AuthPage';
 import { AppShell } from './pages/AppShell';
 import { InvitePage } from './pages/InvitePage';
@@ -20,6 +21,7 @@ import { Spinner } from './components/ui/primitives';
 export function App() {
   const { phase, login, register, logout } = useAuth();
   const pruneTyping = useAppStore((s) => s.pruneTyping);
+  const navigate = useNavigate();
 
   /**
    * Typing indicators expire on a timer rather than on an event, because the "stopped
@@ -30,6 +32,17 @@ export function App() {
     const interval = window.setInterval(pruneTyping, 1500);
     return () => window.clearInterval(interval);
   }, [pruneTyping]);
+
+  /**
+   * Deep links from the desktop shell, currently `rockscord://invite/CODE`.
+   *
+   * Routed rather than loaded: navigating with the router keeps the socket, the session,
+   * and everything already open, where a full page load would tear all of it down to
+   * arrive at the same place.
+   *
+   * A no-op in a browser and in older shells, so this is safe to run unconditionally.
+   */
+  useEffect(() => onDesktopNavigate((path) => navigate(path)), [navigate]);
 
   if (phase === 'checking') {
     return (

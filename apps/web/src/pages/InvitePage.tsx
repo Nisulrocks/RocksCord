@@ -12,6 +12,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import type { Invite, Server, ServerBundle } from '@rockscord/shared';
 import { api, ApiClientError } from '../lib/api';
+import { isDesktop } from '../lib/desktop';
 import { useAppStore } from '../store/useAppStore';
 import { ServerAvatar } from '../components/ui/Avatar';
 import { Button, Spinner } from '../components/ui/primitives';
@@ -22,6 +23,8 @@ const PENDING_INVITE_KEY = 'rockscord:pending-invite';
 export function InvitePage({ signedIn }: { signedIn: boolean }) {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
+  // Read once: it cannot change while the page is mounted.
+  const [inDesktopApp] = useState(() => isDesktop());
   const applyServerBundle = useAppStore((s) => s.applyServerBundle);
 
   const [invite, setInvite] = useState<Invite | null>(null);
@@ -171,6 +174,31 @@ export function InvitePage({ signedIn }: { signedIn: boolean }) {
               <p className="mt-3 text-[12px] text-ink-faint">
                 You will come straight back here after signing in.
               </p>
+            )}
+
+            {/*
+              * The way an invite reaches the installed app.
+              *
+              * A shared link is an ordinary https URL, so the OS hands it to the browser
+              * and someone with the desktop app running still joins in a web page. Only
+              * a browser can claim an https domain, so the app registers `rockscord://`
+              * and this is what uses it.
+              *
+              * Hidden inside the app itself, where the page is already where the button
+              * would send it. Nothing detects whether the app is installed -- there is no
+              * reliable way to -- so it stays a suggestion rather than a redirect: on a
+              * machine without it, clicking does nothing and the web page is still there.
+              */}
+            {!inDesktopApp && code && (
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = `rockscord://invite/${encodeURIComponent(code)}`;
+                }}
+                className="mt-4 text-[12.5px] text-ink-dim underline-offset-2 hover:text-accent-soft hover:underline"
+              >
+                Open in the desktop app instead
+              </button>
             )}
           </>
         ) : null}

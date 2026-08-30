@@ -51,6 +51,17 @@ publish:
   repo: RocksCord
   releaseType: release
 
+# The URL scheme invites use to reach the installed app.
+#
+# `setAsDefaultProtocolClient` registers this at runtime, but only for the copy that is
+# running. Declaring it here makes the installer write the registry entry, so a machine
+# where RocksCord has never been launched still resolves `rockscord://` links -- which is
+# exactly the case for someone who installs it and is then sent an invite.
+protocols:
+  - name: RocksCord
+    schemes:
+      - rockscord
+
 win:
   icon: assets/icon.png
   # Required for unsigned builds. electron-updater otherwise refuses to apply an update
