@@ -79,13 +79,26 @@ will not survive a restart. Come back and do this later if you want them to.
 
 Free tier: 1 GB storage, 5 GB egress/month, no card.
 
-1. Sign up at **[supabase.com](https://supabase.com)** and create a project.
-2. **Storage → New bucket**, name it `rockscord-uploads`, and mark it **Public**.
-   (Public is required: attachment URLs are unguessable capability links, which is the same
-   model image CDNs use.)
-3. **Project Settings → API**, copy:
+1. Sign up at **[supabase.com](https://supabase.com)** and press **New project**.
+
+   It asks for a database password. RocksCord never touches the Postgres database, only
+   Storage, so generate one and forget it. Pick the region nearest you and give it a
+   couple of minutes to provision.
+
+2. **Storage** in the left sidebar → **New bucket**.
+   - Name it exactly `rockscord-uploads`, or set `SUPABASE_BUCKET` to whatever you chose.
+   - Turn **Public bucket** on. This is required: attachment URLs are unguessable
+     capability links, the same model image CDNs use, and a private bucket makes every
+     one of them a 400.
+
+3. **Project Settings** (the gear, bottom of the sidebar) → **API Keys**, and copy:
    - the **Project URL** → `SUPABASE_URL`
-   - the **`service_role`** key → `SUPABASE_SERVICE_KEY`
+   - a key with full server-side access → `SUPABASE_SERVICE_KEY`
+
+   Supabase has renamed that key. Older projects call it **`service_role`** and newer ones
+   a **secret key** starting `sb_secret_`; both sit on this page, sometimes under a
+   *Legacy API keys* tab, and either works. What you must not use is the anon or
+   publishable key -- those are meant to be public and cannot write to storage.
 
 > The service-role key bypasses row-level security. It is used server-side only, after the
 > request has already been authenticated and permission-checked. Never put it in a client.
