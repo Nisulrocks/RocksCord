@@ -8,6 +8,7 @@ import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { useAppStore } from './store/useAppStore';
 import { onDesktopNavigate } from './lib/desktop';
+import { useVoiceOverlay } from './hooks/useVoiceOverlay';
 import { AuthPage } from './pages/AuthPage';
 import { AppShell } from './pages/AppShell';
 import { InvitePage } from './pages/InvitePage';
@@ -45,6 +46,9 @@ export function App() {
    * A no-op in a browser and in older shells, so this is safe to run unconditionally.
    */
   useEffect(() => onDesktopNavigate((path) => navigate(path)), [navigate]);
+
+  // Keeps the desktop voice overlay in step. No-op in a browser.
+  useVoiceOverlay();
 
   /*
    * Show the developer's note once per account.

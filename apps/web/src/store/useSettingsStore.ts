@@ -14,6 +14,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { OverlaySettings } from '../lib/desktop';
 
 export type ThemePreference = 'system' | 'dark' | 'light';
 export type ResolvedTheme = 'dark' | 'light';
@@ -37,6 +38,14 @@ export interface SettingsState {
   /** Whether notifications make a sound. */
   notificationSounds: boolean;
 
+  /**
+   * The in-game voice overlay. Desktop only; the browser ignores it entirely.
+   *
+   * Device-local for the same reason the microphone is: an overlay position is a fact
+   * about the screen you are sitting at, not about who you are.
+   */
+  overlay: OverlaySettings;
+
   /* Browser-side audio processing, applied when the microphone is opened. */
   echoCancellation: boolean;
   noiseSuppression: boolean;
@@ -48,6 +57,7 @@ export interface SettingsState {
   setCameraDeviceId: (id: string) => void;
   setOutputVolume: (volume: number) => void;
   setNotificationSounds: (enabled: boolean) => void;
+  setOverlay: (patch: Partial<OverlaySettings>) => void;
   setAudioProcessing: (
     key: 'echoCancellation' | 'noiseSuppression' | 'autoGainControl',
     value: boolean,
@@ -61,12 +71,24 @@ const DEFAULTS = {
   cameraDeviceId: '',
   outputVolume: 1,
   notificationSounds: true,
+  overlay: {
+    enabled: false,
+    position: 'top-left',
+    scale: 1,
+    opacity: 0.95,
+    showWhen: 'always',
+  } as OverlaySettings,
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
 };
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+const clampRange = (value: unknown, min: number, max: number, fallback: number) =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, value))
+    : fallback;
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -79,6 +101,7 @@ export const useSettingsStore = create<SettingsState>()(
       setCameraDeviceId: (cameraDeviceId) => set({ cameraDeviceId }),
       setOutputVolume: (outputVolume) => set({ outputVolume: clamp01(outputVolume) }),
       setNotificationSounds: (notificationSounds) => set({ notificationSounds }),
+      setOverlay: (patch) => set((state) => ({ overlay: { ...state.overlay, ...patch } })),
       setAudioProcessing: (key, value) => set({ [key]: value } as Partial<SettingsState>),
     }),
     {
@@ -115,6 +138,24 @@ export const useSettingsStore = create<SettingsState>()(
               ? clamp01(saved.outputVolume)
               : DEFAULTS.outputVolume,
           notificationSounds: flag(saved.notificationSounds, DEFAULTS.notificationSounds),
+          /*
+           * Field by field, because this shape grew after people already had settings
+           * stored: a saved object from an older build is missing keys the app now reads,
+           * and spreading it wholesale would leave those undefined rather than defaulted.
+           */
+          overlay: {
+            enabled: flag(saved.overlay?.enabled, DEFAULTS.overlay.enabled),
+            position:
+              saved.overlay?.position === 'top-right' ||
+              saved.overlay?.position === 'bottom-left' ||
+              saved.overlay?.position === 'bottom-right' ||
+              saved.overlay?.position === 'top-left'
+                ? saved.overlay.position
+                : DEFAULTS.overlay.position,
+            scale: clampRange(saved.overlay?.scale, 0.8, 1.4, DEFAULTS.overlay.scale),
+            opacity: clampRange(saved.overlay?.opacity, 0.3, 1, DEFAULTS.overlay.opacity),
+            showWhen: saved.overlay?.showWhen === 'speaking' ? 'speaking' : 'always',
+          },
           echoCancellation: flag(saved.echoCancellation, DEFAULTS.echoCancellation),
           noiseSuppression: flag(saved.noiseSuppression, DEFAULTS.noiseSuppression),
           autoGainControl: flag(saved.autoGainControl, DEFAULTS.autoGainControl),

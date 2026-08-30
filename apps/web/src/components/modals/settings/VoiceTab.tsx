@@ -26,6 +26,7 @@ import {
 } from '../../../lib/voice';
 import { MicTest } from '../../voice/MicTest';
 import { CameraPreview } from '../../voice/CameraPreview';
+import { OverlaySection } from './OverlaySection';
 import { Button, Toggle } from '../../ui/primitives';
 
 /** A labelled `<select>`, styled to match the app's inputs. */
@@ -253,6 +254,8 @@ export function VoiceTab() {
           <CameraPreview />
         )}
       </section>
+
+      <OverlaySection />
 
       <section className="rounded-lg border border-line bg-surface-3 p-4">
         <h4 className="text-[14px] font-semibold text-ink">How voice works here</h4>

@@ -30,6 +30,26 @@ interface DesktopBridge {
   useLocal: () => Promise<void>;
   openSecondWindow: () => Promise<void>;
   onNavigate?: (handler: (path: string) => void) => () => void;
+  setOverlaySettings?: (settings: OverlaySettings) => Promise<void>;
+  setOverlayState?: (participants: OverlayParticipant[]) => Promise<void>;
+}
+
+/** Where the overlay sits and how it behaves. Device-local, like the audio settings. */
+export interface OverlaySettings {
+  enabled: boolean;
+  position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  scale: number;
+  opacity: number;
+  showWhen: 'always' | 'speaking';
+}
+
+export interface OverlayParticipant {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+  speaking: boolean;
+  muted: boolean;
+  deafened: boolean;
 }
 
 function bridge(): DesktopBridge | null {
@@ -72,4 +92,23 @@ export function onDesktopNavigate(handler: (path: string) => void): () => void {
   } catch {
     return () => {};
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Voice overlay                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Both of these are no-ops in a browser and in shells older than the overlay.
+ *
+ * The optional chaining is not defensiveness for its own sake: the desktop shell updates
+ * on its own schedule, so a copy installed before the overlay existed will run this exact
+ * client and must simply ignore it.
+ */
+export function pushOverlaySettings(settings: OverlaySettings): void {
+  void bridge()?.setOverlaySettings?.(settings)?.catch(() => {});
+}
+
+export function pushOverlayState(participants: OverlayParticipant[]): void {
+  void bridge()?.setOverlayState?.(participants)?.catch(() => {});
 }

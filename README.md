@@ -36,7 +36,7 @@ verification.
 server read, notification sounds, and light/dark/system themes.
 
 **Apps** — a web client, a Windows desktop app that embeds the server, with a splash
-screen and automatic updates, and an Android APK.
+screen, automatic updates, and an in-game voice overlay, and an Android APK.
 
 ---
 
@@ -203,6 +203,8 @@ Not production-hardened: no 2FA or CAPTCHA.
   it, the same model image CDNs use.
 - Message history is not virtualised.
 - The portable exe cannot self-update.
+- The voice overlay floats above other windows rather than drawing inside the game, so a
+  game in exclusive fullscreen covers it. Borderless and windowed work.
 - The Android app is a WebView on your deployment: it needs a connection, and gets no push
   notifications while closed.
 - The executable is unsigned, so SmartScreen warns on first run.

@@ -24,6 +24,7 @@ import {
   app,
   dialog,
   ipcMain,
+  screen,
   session,
   shell,
 } from 'electron';
@@ -245,6 +246,171 @@ function openSplash(): void {
 
   void splashWindow.loadFile(path.join(here, 'splash.html'));
   log.info('splash shown');
+}
+
+/* -------------------------------------------------------------------------- */
+/* Voice overlay                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The in-game voice overlay.
+ *
+ * A transparent, click-through, always-on-top window. Discord's equivalent draws *inside*
+ * the game by hooking its DirectX or OpenGL renderer, which is what lets theirs survive
+ * exclusive fullscreen. Electron has no such hook, so this floats above instead: it covers
+ * windowed and borderless-fullscreen games, and an exclusive-fullscreen one will hide it.
+ * That limitation is real and documented rather than worked around badly.
+ *
+ * The window is deliberately inert. It never takes focus, never appears in the taskbar,
+ * and passes every click through to whatever is underneath -- an overlay that could
+ * swallow a click in the middle of a game would be worse than no overlay.
+ */
+interface OverlaySettings {
+  enabled: boolean;
+  position: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  /** 0.8 to 1.4, applied as a zoom factor. */
+  scale: number;
+  /** 0.3 to 1. */
+  opacity: number;
+  /** `always` while in a call, or only while somebody is actually talking. */
+  showWhen: 'always' | 'speaking';
+}
+
+interface OverlayParticipant {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+  speaking: boolean;
+  muted: boolean;
+  deafened: boolean;
+}
+
+const OVERLAY_DEFAULTS: OverlaySettings = {
+  enabled: false,
+  position: 'top-left',
+  scale: 1,
+  opacity: 0.95,
+  showWhen: 'always',
+};
+
+let overlayWindow: BrowserWindow | null = null;
+let overlaySettings: OverlaySettings = { ...OVERLAY_DEFAULTS };
+let overlayParticipants: OverlayParticipant[] = [];
+
+/** Width and height for the current participant count, before scaling. */
+function overlayBounds(count: number): { width: number; height: number } {
+  return { width: 260, height: Math.max(1, count) * 44 + 16 };
+}
+
+function positionOverlay(): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+
+  const { scale, position } = overlaySettings;
+  const base = overlayBounds(overlayParticipants.length);
+  const width = Math.round(base.width * scale);
+  const height = Math.round(base.height * scale);
+
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const area = display.workArea;
+  const margin = 16;
+
+  const x = position.endsWith('right') ? area.x + area.width - width - margin : area.x + margin;
+  const y = position.startsWith('bottom')
+    ? area.y + area.height - height - margin
+    : area.y + margin;
+
+  overlayWindow.setBounds({ x, y, width, height });
+}
+
+function createOverlay(): void {
+  if (overlayWindow && !overlayWindow.isDestroyed()) return;
+
+  overlayWindow = new BrowserWindow({
+    width: 260,
+    height: 60,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    /*
+     * `screen-saver` is the level that stays above full-screen windows. The default
+     * `floating` level sits below them, which would put the overlay behind exactly the
+     * thing it exists to sit on top of.
+     */
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    // Not shown until there is something to show; an empty pill hovering over the desktop
+    // is just clutter.
+    show: false,
+    hasShadow: false,
+    title: 'RocksCord overlay',
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  // Visible on whichever desktop the game is on, rather than only the one it was born on.
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Every click goes to whatever is underneath.
+  overlayWindow.setIgnoreMouseEvents(true, { forward: false });
+
+  overlayWindow.on('closed', () => {
+    overlayWindow = null;
+  });
+
+  void overlayWindow.loadFile(path.join(here, 'overlay.html'));
+  log.info('overlay window created');
+}
+
+function destroyOverlay(): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    overlayWindow = null;
+    return;
+  }
+  overlayWindow.destroy();
+  overlayWindow = null;
+  log.info('overlay window destroyed');
+}
+
+/** Whether the overlay should currently be on screen at all. */
+function overlayShouldShow(): boolean {
+  if (!overlaySettings.enabled) return false;
+  if (overlayParticipants.length === 0) return false;
+  if (overlaySettings.showWhen === 'speaking') {
+    return overlayParticipants.some((person) => person.speaking);
+  }
+  return true;
+}
+
+function renderOverlay(): void {
+  if (!overlaySettings.enabled) {
+    destroyOverlay();
+    return;
+  }
+
+  if (!overlayShouldShow()) {
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.hide();
+    return;
+  }
+
+  createOverlay();
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+
+  overlayWindow.setOpacity(overlaySettings.opacity);
+  overlayWindow.webContents.setZoomFactor(overlaySettings.scale);
+  positionOverlay();
+
+  const payload = JSON.stringify({ participants: overlayParticipants });
+  overlayWindow.webContents
+    .executeJavaScript(`window.__rockscordOverlay && window.__rockscordOverlay(${payload})`)
+    .catch(() => {
+      // The page may not have finished loading yet; the next update will carry the state.
+    });
+
+  // `showInactive` rather than `show`: taking focus would pull the player out of the game.
+  if (!overlayWindow.isVisible()) overlayWindow.showInactive();
 }
 
 /**
@@ -1091,6 +1257,56 @@ ipcMain.handle('rockscord:use-server', async (_event, url: string) => {
 
 ipcMain.handle('rockscord:use-local', async () => {
   await applyServerChoice({ mode: 'embedded', remoteUrl: '' });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Overlay IPC                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The overlay is fed by the main window rather than talking to the server itself.
+ *
+ * Speaking detection is local: it comes from analysing the WebRTC audio in the renderer
+ * that actually holds those streams. A second window with its own socket could learn who
+ * is *in* a call but never who is *talking*, which is the entire point of the thing.
+ */
+ipcMain.handle('rockscord:overlay-settings', (_event, raw: unknown) => {
+  const value = (raw ?? {}) as Partial<OverlaySettings>;
+  const clamp = (n: unknown, min: number, max: number, fallback: number) =>
+    typeof n === 'number' && Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+
+  overlaySettings = {
+    enabled: typeof value.enabled === 'boolean' ? value.enabled : OVERLAY_DEFAULTS.enabled,
+    position:
+      value.position === 'top-right' ||
+      value.position === 'bottom-left' ||
+      value.position === 'bottom-right' ||
+      value.position === 'top-left'
+        ? value.position
+        : OVERLAY_DEFAULTS.position,
+    scale: clamp(value.scale, 0.8, 1.4, OVERLAY_DEFAULTS.scale),
+    opacity: clamp(value.opacity, 0.3, 1, OVERLAY_DEFAULTS.opacity),
+    showWhen: value.showWhen === 'speaking' ? 'speaking' : 'always',
+  };
+
+  renderOverlay();
+});
+
+ipcMain.handle('rockscord:overlay-state', (_event, raw: unknown) => {
+  const list = Array.isArray(raw) ? raw : [];
+  overlayParticipants = list.slice(0, 12).map((entry) => {
+    const person = (entry ?? {}) as Partial<OverlayParticipant>;
+    return {
+      userId: String(person.userId ?? ''),
+      name: String(person.name ?? 'Unknown'),
+      avatarUrl: typeof person.avatarUrl === 'string' ? person.avatarUrl : null,
+      speaking: Boolean(person.speaking),
+      muted: Boolean(person.muted),
+      deafened: Boolean(person.deafened),
+    };
+  });
+
+  renderOverlay();
 });
 
 ipcMain.handle('rockscord:open-second-window', () => {

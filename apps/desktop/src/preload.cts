@@ -55,6 +55,19 @@ contextBridge.exposeInMainWorld('rockscord', {
    * Returns an unsubscribe function. Without one the renderer would accumulate a listener
    * on every mount, and a single invite would fire navigation several times.
    */
+  /**
+   * Push voice overlay settings and state to the main process.
+   *
+   * The overlay is a separate, chrome-less window with no session and no socket of its
+   * own. It is fed from here because speaking detection only exists in this renderer,
+   * where the audio streams are.
+   */
+  setOverlaySettings: (settings: unknown): Promise<void> =>
+    ipcRenderer.invoke('rockscord:overlay-settings', settings),
+
+  setOverlayState: (participants: unknown): Promise<void> =>
+    ipcRenderer.invoke('rockscord:overlay-state', participants),
+
   onNavigate: (handler: (path: string) => void): (() => void) => {
     const listener = (_event: unknown, path: unknown) => {
       if (typeof path === 'string') handler(path);

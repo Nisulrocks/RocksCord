@@ -208,7 +208,7 @@ cpSync(drizzleDir, path.join(resourcesDir, 'drizzle'), { recursive: true });
 
 // Standalone pages, copied verbatim. Both have to render before any server exists, so
 // neither can be part of the bundled client.
-for (const page of ['connect.html', 'splash.html']) {
+for (const page of ['connect.html', 'splash.html', 'overlay.html']) {
   cpSync(path.join(desktopDir, 'src', page), path.join(buildDir, page));
 }
 
