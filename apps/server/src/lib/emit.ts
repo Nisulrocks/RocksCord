@@ -48,6 +48,16 @@ export function emitToChannelExcept<E extends EventName>(
     .emit(event, ...args);
 }
 
+/** Emit to everyone currently inside a voice channel. */
+export function emitToVoice<E extends EventName>(
+  ctx: AppContext,
+  channelId: string,
+  event: E,
+  ...args: EventArgs<E>
+): void {
+  ctx.gateway?.to(Rooms.voice(channelId)).emit(event, ...args);
+}
+
 /** Emit to every member of a server who is currently connected. */
 export function emitToServer<E extends EventName>(
   ctx: AppContext,

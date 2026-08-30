@@ -27,7 +27,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { useUiStore } from '../../store/useUiStore';
 import { useVoiceStore } from '../../store/useVoiceStore';
 import { usePermissions } from '../../hooks/usePermissions';
-import { api } from '../../lib/api';
+import { api, ApiClientError } from '../../lib/api';
 import { setPeerVolume } from '../../lib/voice';
 import { useVoiceSession } from '../../hooks/useVoiceSession';
 import { Avatar } from '../ui/Avatar';
@@ -221,7 +221,11 @@ export function ChannelSidebar({ serverId }: { serverId: string }) {
                   {occupants.length > 0 && (
                     <ul className="mb-1 ml-6 space-y-0.5">
                       {occupants.map((participant) => (
-                        <VoiceOccupant key={participant.userId} participant={participant} />
+                        <VoiceOccupant
+                          key={participant.userId}
+                          participant={participant}
+                          serverId={serverId}
+                        />
                       ))}
                     </ul>
                   )}
@@ -363,14 +367,17 @@ function ChannelRow({
  */
 function VoiceOccupant({
   participant,
+  serverId,
 }: {
   participant: VoiceParticipant;
+  serverId: string;
 }) {
   const speaking = useVoiceStore((s) => s.speaking[participant.userId] ?? false);
   const currentUserId = useAppStore((s) => s.user?.id);
   const openProfileCard = useUiStore((s) => s.openProfileCard);
   const openContextMenu = useUiStore((s) => s.openContextMenu);
   const toast = useUiStore((s) => s.toast);
+  const permissions = usePermissions(serverId);
 
   const muted = participant.selfMute || participant.serverMute;
   const deafened = participant.selfDeaf || participant.serverDeaf;
@@ -401,6 +408,40 @@ function VoiceOccupant({
         { label: 'Volume 50%', onSelect: () => setPeerVolume(participant.userId, 0.5) },
         { label: 'Mute for me', onSelect: () => setPeerVolume(participant.userId, 0) },
       );
+    }
+
+    /*
+     * Moderation, on the server's authority rather than the person's own.
+     *
+     * Hidden for yourself: server mute is something done *to* someone, and the buttons for
+     * silencing your own microphone are already in the panel below. Each entry is gated on
+     * its own permission because muting and deafening are separate powers.
+     */
+    if (!isSelf) {
+      const moderate = async (body: { serverMute?: boolean; serverDeaf?: boolean }) => {
+        try {
+          await api.patch(`/api/servers/${serverId}/members/${participant.userId}/voice`, body);
+        } catch (error) {
+          toast(
+            error instanceof ApiClientError ? error.message : 'Could not do that',
+            'error',
+          );
+        }
+      };
+
+      if (permissions.canInServer(Permission.MUTE_MEMBERS)) {
+        items.push({
+          label: participant.serverMute ? 'Un-mute on server' : 'Mute on server',
+          separated: true,
+          onSelect: () => void moderate({ serverMute: !participant.serverMute }),
+        });
+      }
+      if (permissions.canInServer(Permission.DEAFEN_MEMBERS)) {
+        items.push({
+          label: participant.serverDeaf ? 'Un-deafen on server' : 'Deafen on server',
+          onSelect: () => void moderate({ serverDeaf: !participant.serverDeaf }),
+        });
+      }
     }
 
     items.push({

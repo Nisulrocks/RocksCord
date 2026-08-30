@@ -123,6 +123,23 @@ export const changePasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
+/**
+ * A moderator silencing someone in voice.
+ *
+ * Both fields are optional so the two can be set independently, but at least one has to
+ * be present -- an empty body would otherwise be a successful request that did nothing,
+ * and each field is gated on a different permission.
+ */
+export const moderateVoiceSchema = z
+  .object({
+    serverMute: z.boolean().optional(),
+    serverDeaf: z.boolean().optional(),
+  })
+  .refine(
+    (value) => value.serverMute !== undefined || value.serverDeaf !== undefined,
+    { message: 'Set serverMute, serverDeaf, or both' },
+  );
+
 export const createServerSchema = z.object({
   name: z
     .string()

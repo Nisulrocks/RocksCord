@@ -27,6 +27,7 @@ import {
   Permission,
   Rooms,
   createServerSchema,
+  moderateVoiceSchema,
   updateMemberSchema,
   updateServerSchema,
 } from '@rockscord/shared';
@@ -43,6 +44,11 @@ import {
 } from '../db/schema.js';
 import { ApiError, fromZodError } from '../lib/errors.js';
 import { newId } from '../lib/ids.js';
+import {
+  getUserVoiceChannel,
+  hydrateVoiceStates,
+  updateVoiceState,
+} from '../realtime/voice.js';
 import {
   assertHigherThan,
   assertPermission,
@@ -64,6 +70,7 @@ import {
   emitToUser,
   moveUserSockets,
   writeAuditLog,
+  emitToVoice,
 } from '../lib/emit.js';
 import type { Database } from '../db/index.js';
 
@@ -478,6 +485,83 @@ export default async function serverRoutes(app: FastifyInstance): Promise<void> 
     });
 
     return { ok: true };
+  });
+
+  /**
+   * Server mute / deafen: silence someone in voice, on the moderator's authority.
+   *
+   * Distinct from the `selfMute` a person sets on themselves, and stored separately for
+   * exactly that reason -- the socket handler accepts only self-owned fields, so a muted
+   * member cannot lift it by toggling their own microphone.
+   *
+   * The two flags are gated independently because they are different powers: muting stops
+   * someone talking, deafening stops them listening, and a role may reasonably hold one
+   * without the other.
+   */
+  app.patch('/:serverId/members/:userId/voice', async (request) => {
+    const { serverId, userId } = request.params as { serverId: string; userId: string };
+
+    const parsed = moderateVoiceSchema.safeParse(request.body);
+    if (!parsed.success) throw fromZodError(parsed.error);
+
+    const actor = await requireMember(db, serverId, request.user!.id);
+    if (parsed.data.serverMute !== undefined) {
+      assertPermission(actor, Permission.MUTE_MEMBERS, 'mute members');
+    }
+    if (parsed.data.serverDeaf !== undefined) {
+      assertPermission(actor, Permission.DEAFEN_MEMBERS, 'deafen members');
+    }
+
+    const target = await getMemberContext(db, serverId, userId);
+    if (!target) throw ApiError.notFound('That person is not in this server');
+    assertHigherThan(actor, target, 'moderate');
+
+    /*
+     * The target has to be in a voice channel *of this server*.
+     *
+     * Voice state is global -- one channel per user across the whole app -- so without
+     * this check a moderator here could silence someone sitting in a call somewhere they
+     * have no authority at all, purely because both people share this server.
+     */
+    const channelId = getUserVoiceChannel(userId);
+    if (!channelId) throw ApiError.notFound('They are not in a voice channel');
+
+    const [channel] = await db
+      .select({ serverId: channels.serverId })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1);
+    if (channel?.serverId !== serverId) {
+      throw ApiError.notFound('They are not in a voice channel in this server');
+    }
+
+    const next = updateVoiceState(userId, {
+      serverMute: parsed.data.serverMute,
+      serverDeaf: parsed.data.serverDeaf,
+    });
+    if (!next) throw ApiError.notFound('They are not in a voice channel');
+
+    const [participant] = await hydrateVoiceStates(db, [next]);
+    if (participant) {
+      // Both rooms, matching the gateway: the voice room drives the call UI, the server
+      // room drives the occupant list for people who are not in the call.
+      emitToVoice(ctx, channelId, 'voice:update', participant);
+      emitToServer(ctx, serverId, 'voice:update', participant);
+    }
+
+    await writeAuditLog(db, {
+      serverId,
+      actorId: request.user!.id,
+      action: 'member.voice',
+      targetType: 'user',
+      targetId: userId,
+      metadata: {
+        ...(parsed.data.serverMute !== undefined ? { serverMute: parsed.data.serverMute } : {}),
+        ...(parsed.data.serverDeaf !== undefined ? { serverDeaf: parsed.data.serverDeaf } : {}),
+      },
+    });
+
+    return { ok: true, participant };
   });
 
   /* -------------------------------------------------------------------- */
