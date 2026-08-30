@@ -11,6 +11,16 @@
     // deliberate; verbatim syntax would reject the `.cts` extension it needs to be
     // loaded as a preload script.
     "verbatimModuleSyntax": false,
+    // Resolve the server from its source rather than its build output.
+    //
+    // The desktop app boots the server in-process, so typechecking it needs the server's
+    // types -- and requiring `apps/server/dist` to exist first makes the check depend on
+    // build order. On a fresh clone it simply is not there, which is how this passed
+    // locally and failed in CI.
+    "paths": {
+      "@rockscord/server/app": ["../server/src/app.ts"],
+      "@rockscord/server": ["../server/src/index.ts"]
+    },
     "lib": ["ES2023", "DOM"]
   },
   "include": ["src/**/*.ts", "src/**/*.cts"],
