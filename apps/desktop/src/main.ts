@@ -1034,6 +1034,17 @@ if (!gotLock) {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
+    } else {
+      /*
+       * Someone launched the app and this instance has no window to show them.
+       *
+       * That means startup never completed here, so this process is holding the lock and
+       * giving nothing back -- from outside, double-clicking the icon simply does nothing.
+       * Standing down lets the next launch become the primary instance and actually start.
+       */
+      log.error('second instance arrived while this one has no window; standing down');
+      app.exit(1);
+      return;
     }
 
     // On Windows and Linux a deep link that arrives while the app is running is delivered
@@ -1236,6 +1247,36 @@ if (!gotLock) {
         mainWindow = createWindow(targetUrl);
       }
     });
+  }).catch((error: unknown) => {
+    /*
+     * A failure here must end the process, not leave it sitting there.
+     *
+     * Without this the rejection was merely logged while the splash kept the event loop
+     * alive -- so a startup that never finished became a live app with no window, holding
+     * the single-instance lock. Every launch afterwards failed to get that lock and quit
+     * on the spot, silently, which is how a fixed build could be installed and still
+     * appear to do nothing at all. The original fault lasted one release; its ghost
+     * outlasted it until the process was killed by hand.
+     */
+    const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    log.error(`startup failed: ${detail}`);
+
+    closeSplash();
+    dialog.showErrorBox(
+      'RocksCord could not start',
+      `Something went wrong while starting up.
+
+${
+        error instanceof Error ? error.message : String(error)
+      }
+
+The log is at:
+${getLogPath()}`,
+    );
+
+    // `exit`, not `quit`: quit waits for windows to close, and a wedged startup is exactly
+    // the case where that wait never ends.
+    app.exit(1);
   });
 
   app.on('window-all-closed', () => {
