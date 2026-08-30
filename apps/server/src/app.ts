@@ -80,6 +80,40 @@ function appVersion(): string {
   return resolved;
 }
 
+/**
+ * Storage health, cached briefly.
+ *
+ * `/health` is polled by monitoring every few minutes, and the Supabase check is a network
+ * call -- so the answer is held for a short while rather than asked on every hit. Short
+ * enough that fixing a bucket shows up almost immediately, which is the moment anyone
+ * actually looks at this.
+ */
+let storageCheck: { at: number; value: { driver: string; ok: boolean; detail: string } } | null =
+  null;
+const STORAGE_CHECK_TTL_MS = 30_000;
+
+async function storageHealth(): Promise<{ driver: string; ok: boolean; detail: string }> {
+  if (storageCheck && Date.now() - storageCheck.at < STORAGE_CHECK_TTL_MS) {
+    return storageCheck.value;
+  }
+
+  const driver = await getStorage();
+  let value: { driver: string; ok: boolean; detail: string };
+  try {
+    const result = await driver.check();
+    value = { driver: driver.name, ...result };
+  } catch (error) {
+    value = {
+      driver: driver.name,
+      ok: false,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  storageCheck = { at: Date.now(), value };
+  return value;
+}
+
 export interface BuildAppOptions {
   /** Supply an existing database (tests do this). Otherwise one is opened from env. */
   db?: Database;
@@ -320,7 +354,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<BuiltApp>
      *
      * The name alone is not a secret -- it says nothing about the bucket or the keys.
      */
-    storage: (await getStorage()).name,
+    storage: await storageHealth(),
     uptimeSeconds: Math.round(process.uptime()),
     version: appVersion(),
   }));

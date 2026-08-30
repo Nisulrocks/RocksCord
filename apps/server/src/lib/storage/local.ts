@@ -7,7 +7,8 @@
  * a future bug would turn into arbitrary file write.
  */
 
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, rm, writeFile } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import { env } from '../../env.js';
 import type { StorageDriver } from './index.js';
@@ -37,6 +38,18 @@ export async function createLocalStorage(): Promise<StorageDriver> {
     async remove(key) {
       const target = resolveWithinRoot(root, key);
       await rm(target, { force: true });
+    },
+
+    async check() {
+      try {
+        await access(root, fsConstants.W_OK);
+        return { ok: true, detail: root };
+      } catch (error) {
+        return {
+          ok: false,
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
     },
 
     urlFor(key) {

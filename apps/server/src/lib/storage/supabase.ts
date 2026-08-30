@@ -30,6 +30,25 @@ export function createSupabaseStorage(): StorageDriver {
   return {
     name: 'supabase',
 
+    /**
+     * Ask Supabase about the bucket itself.
+     *
+     * `getBucket` answers the two questions that actually go wrong -- does a bucket by
+     * this name exist, and does this key have the rights to see it -- without writing
+     * anything. A private bucket is reported too: uploads into one succeed and then every
+     * URL the app hands out returns 400, which is worse than failing outright.
+     */
+    async check() {
+      const { data, error } = await getClient().storage.getBucket(bucket);
+
+      if (error) return { ok: false, detail: `${bucket}: ${error.message}` };
+      if (!data) return { ok: false, detail: `${bucket}: not found` };
+      if (!data.public) {
+        return { ok: false, detail: `${bucket}: bucket is private, it must be public` };
+      }
+      return { ok: true, detail: bucket };
+    },
+
     async put(key, data, contentType) {
       const { error } = await getClient()
         .storage.from(bucket)

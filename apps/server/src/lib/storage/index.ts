@@ -29,6 +29,18 @@ export interface StorageDriver {
   remove(key: string): Promise<void>;
   /** Absolute, publicly reachable URL for an object. */
   urlFor(key: string): string;
+  /**
+   * Confirm the destination is actually usable.
+   *
+   * Configuring storage has two halves that fail in different places: bad credentials stop
+   * the process from starting, but a bucket that is missing, misnamed, or private starts
+   * perfectly and then rejects the first upload -- which someone discovers as a generic
+   * "something went wrong" while changing their avatar, with the real reason only in a log
+   * they may not be able to read.
+   *
+   * This makes that answerable without an upload and without log access.
+   */
+  check(): Promise<{ ok: boolean; detail: string }>;
 }
 
 /**
