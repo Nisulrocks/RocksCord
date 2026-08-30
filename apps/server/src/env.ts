@@ -231,6 +231,17 @@ function buildEnv(): Env {
   }
   env.PUBLIC_URL = env.PUBLIC_URL.replace(/\/+$/, '');
 
+  /*
+   * Same trim for Supabase, and for a sharper reason.
+   *
+   * A trailing slash here is invisible and fatal: the client joins paths onto it directly,
+   * so `https://x.supabase.co/` becomes `https://x.supabase.co//storage/v1/...` and every
+   * request comes back "Invalid path specified in request URL". Copying a URL with a
+   * trailing slash is the most ordinary thing in the world, and nothing about the symptom
+   * points at it.
+   */
+  if (env.SUPABASE_URL) env.SUPABASE_URL = env.SUPABASE_URL.trim().replace(/\/+$/, '');
+
   if (env.EMAIL_DRIVER === 'brevo' && !env.EMAIL_API_KEY) {
     throw new Error('EMAIL_DRIVER=brevo requires EMAIL_API_KEY to be set.');
   }
