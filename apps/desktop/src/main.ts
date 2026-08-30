@@ -249,6 +249,50 @@ function openSplash(): void {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Session diagnostics                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Record what the cookie jar holds, and where it lives.
+ *
+ * Signing out after an update has survived one wrong fix already, so this exists to end
+ * the guessing. Three facts settle it between them:
+ *
+ *   - the userData path, because cookies live under it and a path that changes between
+ *     versions would orphan the whole jar while looking perfectly healthy;
+ *   - whether the refresh cookie is present at all before the window loads;
+ *   - its expiry, which distinguishes "the cookie was dropped" from "the server rejected
+ *     a cookie that was still there".
+ *
+ * Nothing secret is written: the value is never read, only its name and expiry.
+ */
+async function logCookieState(stage: string, url: string): Promise<void> {
+  try {
+    const cookies = await session.defaultSession.cookies.get({ url });
+    const refresh = cookies.find((cookie) => cookie.name.includes('refresh'));
+
+    log.info(
+      `cookies [${stage}] userData=${app.getPath('userData')} url=${url} count=${cookies.length} ` +
+        `refresh=${
+          refresh
+            ? `present expires=${
+                refresh.expirationDate
+                  ? new Date(refresh.expirationDate * 1000).toISOString()
+                  : 'session'
+              }`
+            : 'MISSING'
+        }`,
+    );
+  } catch (error) {
+    log.warn(
+      `cookies [${stage}] could not be read: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Voice overlay                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -347,7 +391,9 @@ function createOverlay(): void {
     show: false,
     hasShadow: false,
     title: 'RocksCord overlay',
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    // Never focused by design, so without this it is permanently a throttled background
+    // window and its own transitions stutter.
+    webPreferences: { nodeIntegration: false, contextIsolation: true, backgroundThrottling: false },
   });
 
   overlayWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -560,6 +606,15 @@ function createWindow(targetUrl: string): BrowserWindow {
       contextIsolation: true,
       sandbox: false,
       spellcheck: true,
+      /*
+       * Keep running when the window is not in front.
+       *
+       * Chromium throttles background windows hard: timers are clamped and
+       * `requestAnimationFrame` stops altogether. Speaking detection is an analyser node
+       * read on rAF, so tabbing into a game froze it -- and with it the overlay, whose
+       * entire job is to work while you are looking at something else.
+       */
+      backgroundThrottling: false,
     },
   });
 
@@ -957,6 +1012,18 @@ app.on('open-url', (event, url) => {
   handleDeepLink(url);
 });
 
+/*
+ * Stop Chromium standing the renderer down when the app is not in front.
+ *
+ * `backgroundThrottling: false` covers the window, but Chromium also lowers a renderer's
+ * priority when its window is merely *occluded* -- fully covered by a game, which is
+ * exactly the situation the overlay exists for. These switches turn off the remaining
+ * paths, and must be set before the app is ready to have any effect.
+ */
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+
 // One instance only: a second launch focuses the existing window instead of starting a
 // second server on a second port against the same database file.
 const gotLock = app.requestSingleInstanceLock();
@@ -1025,6 +1092,13 @@ if (!gotLock) {
      * A `true` return means the app is quitting to reinstall itself, so nothing more
      * should start -- a window created now would flash open moments before exit.
      */
+    /*
+     * Before the update check, which is the moment that matters: if the jar is intact here
+     * and empty on the next launch, the update destroyed it; if it is already empty here,
+     * it was lost when the previous run ended.
+     */
+    await logCookieState('startup', targetUrl);
+
     if (
       await runStartupUpdate({
         onStatus: (text, percent) => setSplashStatus(text, false, percent),
@@ -1139,6 +1213,7 @@ if (!gotLock) {
      */
     mainWindow.webContents.once('did-finish-load', () => {
       setTimeout(() => {
+        void logCookieState('after-load', targetUrl);
         session.defaultSession.cookies.flushStore().catch((error: unknown) => {
           log.warn(
             `could not flush cookies: ${error instanceof Error ? error.message : String(error)}`,
