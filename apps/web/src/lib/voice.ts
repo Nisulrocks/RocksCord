@@ -102,6 +102,7 @@ function watchSpeaking(
 ): () => void {
   let stopped = false;
   let speaking = false;
+  let interval: ReturnType<typeof setInterval> | null = null;
 
   try {
     const context = getAudioContext();
@@ -112,7 +113,8 @@ function watchSpeaking(
     source.connect(analyser);
 
     const buffer = new Uint8Array(analyser.fftSize);
-    let quietFrames = 0;
+    /** When the level first dropped below the release threshold, or 0 while loud. */
+    let quietSince = 0;
 
     const tick = () => {
       if (stopped) return;
@@ -127,29 +129,46 @@ function watchSpeaking(
 
       if (!speaking && rms > 0.045) {
         speaking = true;
-        quietFrames = 0;
+        quietSince = 0;
         onChange(true);
       } else if (speaking && rms < 0.025) {
-        quietFrames += 1;
-        // ~250 ms of quiet before we call it silence.
-        if (quietFrames > 15) {
+        /*
+         * Measured in milliseconds, not ticks.
+         *
+         * Counting ticks assumes a fixed rate, and this loop no longer has one: a browser
+         * clamps background timers to a second, which would have turned "250 ms of quiet"
+         * into fifteen seconds of a stuck speaking indicator.
+         */
+        if (quietSince === 0) quietSince = Date.now();
+        else if (Date.now() - quietSince > 250) {
           speaking = false;
+          quietSince = 0;
           onChange(false);
         }
       } else if (speaking) {
-        quietFrames = 0;
+        quietSince = 0;
       }
-
-      requestAnimationFrame(tick);
     };
 
-    requestAnimationFrame(tick);
+    /*
+     * A timer, not `requestAnimationFrame`.
+     *
+     * rAF is driven by frame production, so a window that is not being drawn produces no
+     * frames and the callback simply stops -- which is every window while you are playing
+     * a game, and exactly when the overlay needs this most. `backgroundThrottling: false`
+     * does not help, because it governs timer clamping and renderer priority rather than
+     * whether frames are produced at all.
+     *
+     * 20 Hz is far more than speech detection needs and costs a fraction of 60 Hz.
+     */
+    interval = setInterval(tick, 50);
   } catch {
     return () => {};
   }
 
   return () => {
     stopped = true;
+    if (interval !== null) clearInterval(interval);
     if (speaking) onChange(false);
   };
 }
