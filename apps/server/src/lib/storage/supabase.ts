@@ -39,9 +39,22 @@ export function createSupabaseStorage(): StorageDriver {
      * URL the app hands out returns 400, which is worse than failing outright.
      */
     async check() {
+      /*
+       * The URL being asked for, alongside whatever Supabase says about it.
+       *
+       * "Invalid path specified in request URL" describes the request, not the bucket, so
+       * the message alone cannot distinguish a missing bucket from a base URL that is not
+       * the project's API root -- the dashboard URL and the storage endpoint both produce
+       * it, and both look right when you glance at them.
+       *
+       * Only the base URL is reported. The project reference is in every public asset URL
+       * this app already hands out; the key is what is secret, and it is not here.
+       */
+      const attempted = `${env.SUPABASE_URL ?? '(unset)'}/storage/v1/bucket/${bucket}`;
+
       const { data, error } = await getClient().storage.getBucket(bucket);
 
-      if (error) return { ok: false, detail: `${bucket}: ${error.message}` };
+      if (error) return { ok: false, detail: `${error.message} -- tried ${attempted}` };
       if (!data) return { ok: false, detail: `${bucket}: not found` };
       if (!data.public) {
         return { ok: false, detail: `${bucket}: bucket is private, it must be public` };
