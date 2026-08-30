@@ -3,7 +3,7 @@
  * global overlays plus the handful of app-wide side effects.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { useAppStore } from './store/useAppStore';
@@ -15,12 +15,14 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { ContextMenu, Toasts } from './components/ui/Overlays';
 import { ModalHost } from './components/modals/ModalHost';
+import { WelcomeModal, markWelcomed, shouldWelcome } from './components/modals/WelcomeModal';
 import { ProfileCard } from './components/ProfileCard';
 import { Spinner } from './components/ui/primitives';
 
 export function App() {
   const { phase, login, register, logout } = useAuth();
   const pruneTyping = useAppStore((s) => s.pruneTyping);
+  const user = useAppStore((s) => s.user);
   const navigate = useNavigate();
 
   /**
@@ -43,6 +45,24 @@ export function App() {
    * A no-op in a browser and in older shells, so this is safe to run unconditionally.
    */
   useEffect(() => onDesktopNavigate((path) => navigate(path)), [navigate]);
+
+  /*
+   * Show the developer's note once per account.
+   *
+   * Keyed on the user rather than the device, so a second person signing in on the same
+   * machine is greeted rather than skipped. Deciding on `user.id` also means it waits for
+   * the session to resolve, which is what keeps it from flashing over the login form.
+   */
+  const [welcoming, setWelcoming] = useState(false);
+  useEffect(() => {
+    if (phase !== 'signed-in' || !user) return;
+    if (shouldWelcome(user.id)) setWelcoming(true);
+  }, [phase, user]);
+
+  const dismissWelcome = () => {
+    if (user) markWelcomed(user.id);
+    setWelcoming(false);
+  };
 
   if (phase === 'checking') {
     return (
@@ -86,6 +106,7 @@ export function App() {
         )}
       </Routes>
 
+      {welcoming && <WelcomeModal onClose={dismissWelcome} />}
       <ModalHost />
       <ContextMenu />
       <ProfileCard />

@@ -931,6 +931,30 @@ if (!gotLock) {
       mainWindow.webContents.once('did-finish-load', () => handleDeepLink(launchLink));
     }
 
+    /*
+     * Persist the session cookie shortly after the client has settled.
+     *
+     * Signing in, and every launch that refreshes, rotates the refresh token and writes a
+     * new cookie -- which Electron keeps in memory and flushes on its own schedule. Any
+     * abrupt exit before that write lands leaves the previous, now-superseded token on
+     * disk, and presenting a superseded token is treated as theft: the server signs the
+     * whole account out.
+     *
+     * The updater flushes before it force-quits, which is the case people actually hit.
+     * This covers the rest -- a crash, a kill, a machine losing power -- by making the
+     * window in which the newest cookie exists only in memory a few seconds rather than
+     * the entire session.
+     */
+    mainWindow.webContents.once('did-finish-load', () => {
+      setTimeout(() => {
+        session.defaultSession.cookies.flushStore().catch((error: unknown) => {
+          log.warn(
+            `could not flush cookies: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      }, 5_000);
+    });
+
     // For sessions left open for days; anything found is applied silently on quit.
     startBackgroundUpdateChecks();
 

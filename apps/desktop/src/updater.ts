@@ -22,7 +22,7 @@
  *    target exists, so a locally built exe never checks.
  */
 
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, session } from 'electron';
 import { autoUpdater, type UpdateInfo } from 'electron-updater';
 import { log } from './log.js';
 
@@ -69,8 +69,32 @@ function configureUpdater(): void {
   };
 }
 
+/**
+ * Write the cookie store to disk before anything force-quits the process.
+ *
+ * Electron persists cookies lazily, and `quitAndInstall` terminates rather than shutting
+ * down cleanly -- so a cookie written shortly beforehand can simply never reach disk.
+ *
+ * That is not a small loss here. The refresh token *rotates* on every use, and replaying
+ * a superseded one is treated as theft: the server revokes every session for that account
+ * on the spot. So losing the newest cookie does not just log you out of this device, it
+ * makes the next launch present a revoked token and get the whole account signed out.
+ * "The app forgot me after updating" was exactly this.
+ */
+async function flushCookies(): Promise<void> {
+  try {
+    await session.defaultSession.cookies.flushStore();
+    log.info('cookie store flushed');
+  } catch (error) {
+    // Not worth blocking an update over; the worst case is the sign-in this was added to
+    // prevent, which is where things already stood.
+    log.warn(`could not flush cookies: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 /** Silent install, then relaunch. The user sees the app restart, and nothing else. */
-function installNow(): void {
+async function installNow(): Promise<void> {
+  await flushCookies();
   autoUpdater.quitAndInstall(true, true);
 }
 
@@ -145,7 +169,7 @@ export async function runStartupUpdate({ onStatus }: StartupUpdateOptions): Prom
      */
     await new Promise((resolve) => setTimeout(resolve, 400));
 
-    installNow();
+    await installNow();
     return true;
   } catch (error) {
     /*
@@ -223,7 +247,7 @@ export async function checkForUpdatesInteractive(window: BrowserWindow | null): 
       defaultId: 1,
       cancelId: 1,
     });
-    if (result.response === 0) installNow();
+    if (result.response === 0) await installNow();
     return;
   }
 

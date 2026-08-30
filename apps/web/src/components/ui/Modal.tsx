@@ -76,7 +76,16 @@ export function Modal({
       const candidates = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)];
       const target =
         candidates.find((el) => !el.hasAttribute('data-modal-close')) ?? candidates[0];
-      target?.focus();
+      /*
+       * `preventScroll` so focusing does not also scroll.
+       *
+       * A modal taller than the window opens scrolled to wherever its first control
+       * happens to be, which for anything with the button at the end means opening part
+       * way down and skipping the beginning of whatever it was there to say. Focus still
+       * lands correctly for the keyboard and for screen readers; only the scrolling is
+       * suppressed.
+       */
+      target?.focus({ preventScroll: true });
     }, 10);
 
     return () => {
